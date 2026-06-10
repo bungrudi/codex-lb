@@ -7,8 +7,9 @@ from sqlalchemy import select
 
 import app.modules.proxy.api as proxy_api
 from app.core.config.settings import get_settings
+from app.core.external_providers.runtime_config import get_external_routing_config_cache
 from app.core.types import JsonValue
-from app.db.models import ExternalProvider
+from app.db.models import ExternalModelRoute, ExternalProvider
 from app.db.session import get_background_session
 
 pytestmark = pytest.mark.integration
@@ -181,6 +182,38 @@ async def test_activating_route_profile_deactivates_conflicting_profile(async_cl
     routes = {route["id"]: route for route in admin.json()["routes"]}
     assert routes[second_route_id]["isActive"] is True
     assert routes[third.json()["id"]]["isActive"] is True
+
+
+@pytest.mark.asyncio
+async def test_persisted_route_conflict_is_reported_and_fails_closed(async_client):
+    first_route_id = await _create_dashboard_provider_and_route(async_client)
+    async with get_background_session() as session:
+        session.add(
+            ExternalModelRoute(
+                name="Conflicting profile",
+                public_model="gpt-5.3-codex",
+                provider_id="openrouter",
+                target_model="other/model",
+                endpoints_json='["chat.completions"]',
+                is_active=True,
+            )
+        )
+        await session.commit()
+    await get_external_routing_config_cache().invalidate()
+
+    admin = await async_client.get("/api/settings/external-model-routing")
+    assert admin.status_code == 200
+    routes = {route["id"]: route for route in admin.json()["routes"]}
+    assert routes[first_route_id]["status"] == "conflict"
+    assert any(route["status"] == "conflict" for route in routes.values())
+
+    response = await async_client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-5.3-codex", "messages": [{"role": "user", "content": "hi"}]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "external_route_conflict"
 
 
 @pytest.mark.asyncio

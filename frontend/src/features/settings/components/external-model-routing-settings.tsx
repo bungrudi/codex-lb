@@ -32,8 +32,8 @@ export type ExternalModelRoutingSettingsProps = {
   onUpdateProvider: (providerId: string, payload: ExternalProviderUpdateRequest) => Promise<unknown>;
   onDeleteProvider: (providerId: string) => Promise<unknown>;
   onCreateRoute: (payload: ExternalModelRouteCreateRequest) => Promise<unknown>;
-  onUpdateRoute: (publicModel: string, payload: ExternalModelRouteUpdateRequest) => Promise<unknown>;
-  onDeleteRoute: (publicModel: string) => Promise<unknown>;
+  onUpdateRoute: (routeId: string, payload: ExternalModelRouteUpdateRequest) => Promise<unknown>;
+  onDeleteRoute: (routeId: string) => Promise<unknown>;
 };
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
@@ -43,7 +43,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
   if (status === "disabled") {
     return "secondary";
   }
-  if (status === "missing_api_key" || status === "provider_disabled") {
+  if (status === "missing_api_key" || status === "provider_disabled" || status === "conflict") {
     return "destructive";
   }
   return "outline";
@@ -82,9 +82,25 @@ export function ExternalModelRoutingSettings({
     () => new Set(["chat.completions", "responses", "backend.responses"]),
   );
   const [routeTargetUpdates, setRouteTargetUpdates] = useState<Record<string, string>>({});
-  const activeRows = admin.routes
-    .filter((route) => route.isActive)
-    .flatMap((route) => route.endpoints.map((endpoint) => ({ route, endpoint })));
+  const routeGroups = useMemo(() => {
+    const groups = new Map<string, typeof admin.routes>();
+    for (const route of admin.routes) {
+      groups.set(route.publicModel, [...(groups.get(route.publicModel) ?? []), route]);
+    }
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [admin]);
+  const activeGroups = useMemo(() => {
+    const groups = new Map<string, Array<{ route: (typeof admin.routes)[number]; endpoint: string }>>();
+    for (const route of admin.routes) {
+      if (!route.isActive) {
+        continue;
+      }
+      for (const endpoint of route.endpoints) {
+        groups.set(route.publicModel, [...(groups.get(route.publicModel) ?? []), { route, endpoint }]);
+      }
+    }
+    return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [admin]);
 
   const providerIdValue = providerId.trim().toLowerCase();
   const providerValid = providerIdValue.length > 0 && providerBaseUrl.trim().length > 0;
@@ -146,6 +162,28 @@ export function ExternalModelRoutingSettings({
       stripRequestFields: [],
       deactivateConflicts: true,
     });
+  };
+
+  const setRouteActive = (route: (typeof admin.routes)[number], checked: boolean) => {
+    if (checked) {
+      const conflictingProfiles = admin.routes.filter(
+        (candidate) =>
+          candidate.id !== route.id &&
+          candidate.isActive &&
+          candidate.publicModel === route.publicModel &&
+          candidate.endpoints.some((endpoint) => route.endpoints.includes(endpoint)),
+      );
+      if (conflictingProfiles.length > 0) {
+        const names = conflictingProfiles.map((profile) => profile.name).join(", ");
+        const confirmed = window.confirm(
+          `Activate ${route.name}? This will deactivate overlapping active profile(s): ${names}.`,
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+    }
+    void onUpdateRoute(route.id, { isActive: checked, deactivateConflicts: true });
   };
 
   return (
@@ -246,12 +284,17 @@ export function ExternalModelRoutingSettings({
           <div className="space-y-3 rounded-lg border p-3">
             <div>
               <p className="text-sm font-medium">Active map</p>
-              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                {activeRows.length === 0 ? <p>No active external routes.</p> : null}
-                {activeRows.map(({ route, endpoint }) => (
-                  <p key={`${route.id}:${endpoint}`}>
-                    <span className="font-medium text-foreground">{route.publicModel}</span> · {endpoint} · {route.name} → {route.targetModel}
-                  </p>
+              <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                {activeGroups.length === 0 ? <p>No active external routes.</p> : null}
+                {activeGroups.map(([model, rows]) => (
+                  <div key={model} className="space-y-1">
+                    <p className="font-medium text-foreground">{model}</p>
+                    {rows.map(({ route, endpoint }) => (
+                      <p key={`${route.id}:${endpoint}`} className="pl-3">
+                        {endpoint} · {route.name} → {route.targetModel}
+                      </p>
+                    ))}
+                  </div>
                 ))}
               </div>
             </div>
@@ -260,34 +303,39 @@ export function ExternalModelRoutingSettings({
               <p className="text-sm font-medium">Route profiles</p>
               <div className="mt-2 space-y-2">
                 {admin.routes.length === 0 ? <p className="text-xs text-muted-foreground">No external route profiles configured.</p> : null}
-                {admin.routes.map((route) => {
-                  const retargetDraft = routeTargetUpdates[route.id] ?? route.targetModel;
-                  return (
-                    <div key={route.id} className="space-y-2 rounded-md bg-muted/50 p-2 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="font-medium text-foreground">{route.name}</p>
-                          <p className="text-muted-foreground">{route.publicModel} · {route.providerId} → {route.targetModel}</p>
-                          <p className="text-muted-foreground">{route.endpoints.join(", ")}</p>
+                {routeGroups.map(([model, routes]) => (
+                  <div key={model} className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">{model}</p>
+                    {routes.map((route) => {
+                      const retargetDraft = routeTargetUpdates[route.id] ?? route.targetModel;
+                      return (
+                        <div key={route.id} className="space-y-2 rounded-md bg-muted/50 p-2 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-foreground">{route.name}</p>
+                              <p className="text-muted-foreground">{route.providerId} → {route.targetModel}</p>
+                              <p className="text-muted-foreground">{route.endpoints.join(", ")}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={statusVariant(route.status)}>{route.status.replaceAll("_", " ")}</Badge>
+                              <Switch aria-label={`Enable external route ${route.name}`} checked={route.isActive} disabled={busy} onCheckedChange={(checked) => setRouteActive(route, checked === true)} />
+                            </div>
+                          </div>
+                          {route.statusMessage ? <AlertMessage variant="warning">{route.statusMessage}</AlertMessage> : null}
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input aria-label={`Target model for external route ${route.name}`} className="h-8 text-xs" value={retargetDraft} disabled={busy} onChange={(event) => setRouteTargetUpdates((current) => ({ ...current, [route.id]: event.target.value }))} />
+                            <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={busy || retargetDraft.trim().length === 0 || retargetDraft.trim() === route.targetModel} onClick={() => void onUpdateRoute(route.id, { targetModel: retargetDraft.trim(), deactivateConflicts: true })}>
+                              Retarget
+                            </Button>
+                            <Button type="button" size="sm" variant="destructive" className="h-8 text-xs" disabled={busy} onClick={() => void onDeleteRoute(route.id)}>
+                              Delete
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={statusVariant(route.status)}>{route.status.replaceAll("_", " ")}</Badge>
-                          <Switch aria-label={`Enable external route ${route.name}`} checked={route.isActive} disabled={busy} onCheckedChange={(checked) => void onUpdateRoute(route.id, { isActive: checked, deactivateConflicts: true })} />
-                        </div>
-                      </div>
-                      {route.statusMessage ? <AlertMessage variant="warning">{route.statusMessage}</AlertMessage> : null}
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input aria-label={`Target model for external route ${route.name}`} className="h-8 text-xs" value={retargetDraft} disabled={busy} onChange={(event) => setRouteTargetUpdates((current) => ({ ...current, [route.id]: event.target.value }))} />
-                        <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={busy || retargetDraft.trim().length === 0 || retargetDraft.trim() === route.targetModel} onClick={() => void onUpdateRoute(route.id, { targetModel: retargetDraft.trim(), deactivateConflicts: true })}>
-                          Retarget
-                        </Button>
-                        <Button type="button" size="sm" variant="destructive" className="h-8 text-xs" disabled={busy} onClick={() => void onDeleteRoute(route.id)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

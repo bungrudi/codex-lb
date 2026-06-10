@@ -40,9 +40,17 @@ class ExternalModelRoutingService:
         providers = list(await self._repository.list_providers())
         routes = list(await self._repository.list_routes())
         provider_map = {provider.id: provider for provider in providers}
+        conflicting_route_ids = _conflicting_active_route_ids(routes)
         return ExternalModelRoutingAdminResponse(
             providers=[self._provider_response(provider) for provider in providers],
-            routes=[self._route_response(route, provider_map=provider_map) for route in routes],
+            routes=[
+                self._route_response(
+                    route,
+                    provider_map=provider_map,
+                    has_active_conflict=route.id in conflicting_route_ids,
+                )
+                for route in routes
+            ],
         )
 
     async def create_provider(self, payload: ExternalProviderCreateRequest) -> ExternalProviderResponse:
@@ -185,7 +193,12 @@ class ExternalModelRoutingService:
         row = await self._repository.add_route(row)
         await get_external_routing_config_cache().invalidate()
         providers = {provider.id: provider for provider in await self._repository.list_providers()}
-        return self._route_response(row, provider_map=providers)
+        conflicting_route_ids = _conflicting_active_route_ids(await self._repository.list_routes())
+        return self._route_response(
+            row,
+            provider_map=providers,
+            has_active_conflict=row.id in conflicting_route_ids,
+        )
 
     async def update_route(
         self,
@@ -257,7 +270,12 @@ class ExternalModelRoutingService:
         row = await self._repository.save_route(row)
         await get_external_routing_config_cache().invalidate()
         providers = {provider.id: provider for provider in await self._repository.list_providers()}
-        return self._route_response(row, provider_map=providers)
+        conflicting_route_ids = _conflicting_active_route_ids(await self._repository.list_routes())
+        return self._route_response(
+            row,
+            provider_map=providers,
+            has_active_conflict=row.id in conflicting_route_ids,
+        )
 
     async def delete_route(self, route_id: str) -> None:
         row = await self._require_route(route_id)
@@ -405,8 +423,13 @@ class ExternalModelRoutingService:
         row: ExternalModelRoute,
         *,
         provider_map: Mapping[str, ExternalProvider],
+        has_active_conflict: bool = False,
     ) -> ExternalModelRouteResponse:
-        status, status_message = self._route_status(row, provider_map=provider_map)
+        status, status_message = self._route_status(
+            row,
+            provider_map=provider_map,
+            has_active_conflict=has_active_conflict,
+        )
         return ExternalModelRouteResponse(
             id=row.id,
             name=row.name,
@@ -431,9 +454,12 @@ class ExternalModelRoutingService:
         row: ExternalModelRoute,
         *,
         provider_map: Mapping[str, ExternalProvider],
+        has_active_conflict: bool = False,
     ) -> tuple[ExternalRouteStatus, str | None]:
         if not row.is_active:
             return "disabled", "Route is disabled"
+        if has_active_conflict:
+            return "conflict", "Multiple active route profiles match at least one endpoint"
         provider = provider_map.get(row.provider_id)
         if provider is None or not provider.is_active:
             return "provider_disabled", "Provider is missing or disabled"
@@ -452,6 +478,21 @@ class ExternalModelRoutingService:
         if encrypted is None:
             return None
         return self._encryptor.decrypt(encrypted)
+
+
+def _conflicting_active_route_ids(routes: Sequence[ExternalModelRoute]) -> set[str]:
+    route_ids_by_endpoint: dict[tuple[str, str], list[str]] = {}
+    for route in routes:
+        if not route.is_active:
+            continue
+        for endpoint in _parse_string_list(route.endpoints_json):
+            route_ids_by_endpoint.setdefault((route.public_model, endpoint), []).append(route.id)
+
+    conflicting_ids: set[str] = set()
+    for route_ids in route_ids_by_endpoint.values():
+        if len(route_ids) > 1:
+            conflicting_ids.update(route_ids)
+    return conflicting_ids
 
 
 def _dump_json_object(value: Mapping[str, JsonValue] | None) -> str:
