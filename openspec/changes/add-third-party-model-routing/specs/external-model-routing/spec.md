@@ -36,6 +36,46 @@ Provider configuration MUST include a provider id, provider kind, base URL, API-
 - **THEN** the external route does not match
 - **AND** the provider target model id is not treated as a public model alias
 
+### Requirement: Dashboard settings manage external providers and model routes
+
+The dashboard SHALL expose external model routing management from the existing Settings area rather than a separate standalone GUI. Authenticated dashboard operators MUST be able to create, update, list, enable, disable, and delete OpenAI-compatible external provider records and exact public-model route records.
+
+Dashboard-managed provider API keys SHALL be stored encrypted with the existing application encryption-key mechanism. Admin API and dashboard responses MUST return only secret status metadata such as whether a key is configured; they MUST NOT return raw provider API keys. Updating a provider without an API-key field MUST preserve the existing encrypted key. An explicit key-clear action MUST remove the stored key.
+
+The runtime route resolver MUST include dashboard-managed providers and routes without requiring process restart. Dashboard-managed rows MUST take precedence over environment-provided external routing config for the same provider id or public model. Dashboard changes MUST invalidate any external routing cache so the next proxy request observes the new provider or route state.
+
+Dashboard-managed routes MUST use the same validation and routing semantics as environment-configured routes: exact public model ids, explicit endpoint lists, supported provider references, HTTPS provider base URLs unless local insecure mode is explicitly enabled, fallback disabled unless implemented, public model policy enforcement, client-visible public model identity preservation, and deterministic unsupported-endpoint errors.
+
+#### Scenario: Operator creates a provider and route from Settings
+
+- **GIVEN** no process restart occurs after startup
+- **WHEN** an authenticated dashboard operator creates an enabled provider with an encrypted API key
+- **AND** creates an enabled route mapping public model `gpt-5.3-codex` to that provider target model `minimax/minimax-m3` for endpoint `backend.responses`
+- **THEN** the next matching backend Codex Responses request routes to the configured provider target model
+- **AND** the client-visible response still uses public model `gpt-5.3-codex`
+
+#### Scenario: Dashboard responses redact provider secrets
+
+- **GIVEN** a dashboard-managed provider has an encrypted provider API key
+- **WHEN** an operator lists or reads external provider routing settings
+- **THEN** the response indicates that the provider key is configured
+- **AND** the response does not include the raw provider API key
+- **AND** credential-bearing provider headers are not exposed as raw secret values
+
+#### Scenario: Dashboard config takes precedence over environment config
+
+- **GIVEN** environment config maps public model `gpt-5.3-codex` to one provider target
+- **AND** dashboard config maps public model `gpt-5.3-codex` to a different enabled provider target
+- **WHEN** a client sends a matching proxy request
+- **THEN** the dashboard-managed route is selected
+- **AND** the environment route for the same public model is not used
+
+#### Scenario: Dashboard-admin endpoints require dashboard authentication
+
+- **WHEN** an unauthenticated request attempts to create, update, delete, or list dashboard-managed external providers or routes
+- **THEN** the system rejects the request using the existing dashboard authentication error contract
+- **AND** no provider or route configuration is changed
+
 ### Requirement: External provider routes preserve public model identity externally
 
 For provider-routed requests, the system MUST keep the client-visible model identity equal to the effective public model id. The outbound provider request MUST use the configured provider target model id, but client-facing JSON responses, streaming SSE JSON payloads, and collected response payloads MUST replace provider target model fields with the public model id wherever the provider emits a model field for the request model.

@@ -117,17 +117,36 @@ API-key allowlists, enforced models, and model-scoped limits use `public_model`.
 
 Request logs should keep `model = public_model` and `account_id = NULL` for provider-routed requests, with additional provider metadata columns or equivalent structured metadata for `provider_id`, `target_model`, endpoint, fallback status, and fallback reason.
 
+## Dashboard-managed routing config
+
+The operator-selected GUI scope is hybrid full GUI management inside the existing Settings page. The dashboard should manage provider records, encrypted provider API keys, and exact public-model route records; it should not create a separate standalone model-mapping GUI.
+
+Use normalized tables rather than adding large JSON blobs to `dashboard_settings` because operators need CRUD operations, secret metadata, route status, and future health/test actions:
+
+- `external_providers`: provider id, kind, base URL, encrypted API key, optional API-key env fallback, non-secret default headers JSON, timeouts, enabled flag, insecure-local override, timestamps.
+- `external_model_routes`: public model, provider id, target model, endpoints JSON, request overrides JSON, stripped request fields JSON, preserve-public-model flag, fallback flag, pricing JSON, enabled flag, timestamps.
+
+Keep environment config supported as bootstrap/static config. At runtime, build an effective config by merging env config with dashboard-managed rows. Dashboard rows take precedence for the same provider id or public model, and dashboard writes invalidate a short-lived effective-config cache so route changes work without process restart.
+
+Provider secrets should use the existing `TokenEncryptor` pattern. Admin responses expose `api_key_configured` / `api_key_source` metadata only. Create/update requests may include a new secret; omission preserves the prior secret; an explicit clear operation removes it. The provider client can already accept an explicit API key, so the resolver/effective config layer can pass a decrypted dashboard key without placing raw secrets in public schemas.
+
+Frontend work belongs as a Settings section/submenu near existing routing and upstream proxy controls. The UI should show:
+
+- provider list/form: id, base URL, enabled flag, API-key configured badge, API-key update field, optional headers/timeouts advanced controls;
+- route list/form: public model, provider select, target model, endpoint checkboxes, enabled flag, advanced request overrides/strip fields;
+- warnings that external routes send prompts/tool context to the configured third-party provider;
+- route health/status hints such as missing key, provider disabled, or endpoint unsupported.
+
 ## Security and privacy
 
 - External routing is opt-in and disabled when no config exists.
 - Provider base URLs should be HTTPS unless an explicit local-test escape hatch is enabled.
-- Provider credentials and credential-bearing custom headers must be redacted in logs and archives.
+- Provider credentials and credential-bearing custom headers must be redacted in logs, dashboard responses, and archives.
 - Client-facing responses and model lists must not expose provider ids or target model ids.
-- Operator logs must still reveal actual provider routing to avoid misleading internal diagnostics.
+- Operator logs and authenticated dashboard-admin views may reveal actual provider routing to avoid misleading diagnostics.
 
 ## Open questions for implementation
 
-- Whether dashboard-managed provider keys are needed, or env-only keys are sufficient.
 - Whether account-assigned API keys should be allowed to use provider routes by default or require a future provider-assignment scope.
 - Which compact strategy should be supported first: unsupported, ChatGPT-pool compact, provider pass-through, or synthetic compact.
 - Whether any provider supports a compatible websocket contract that is safe for Codex-native clients.

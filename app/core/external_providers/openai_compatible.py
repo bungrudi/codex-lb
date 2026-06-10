@@ -59,7 +59,8 @@ class ExternalProviderError(Exception):
 class OpenAICompatibleProviderClient:
     def __init__(self, provider: ExternalProviderConfig, *, api_key: str | None = None) -> None:
         self._provider = provider
-        self._api_key = api_key if api_key is not None else os.environ.get(provider.api_key_env)
+        env_api_key = os.environ.get(provider.api_key_env) if provider.api_key_env is not None else None
+        self._api_key = api_key if api_key is not None else provider.api_key or env_api_key
         if not self._api_key:
             raise ExternalProviderError(
                 503,

@@ -45,7 +45,12 @@
 
 - [ ] 8.1 Decide and implement compact strategy (`unsupported`, `codex_pool`, provider pass-through, or synthetic compact) with contract tests.
 - [ ] 8.2 Decide and implement websocket behavior for externally routed models with Codex CLI/OpenAI SDK tests.
-- [ ] 8.3 Add dashboard/admin management for providers and routes if operator runtime management is required.
+- [x] 8.3 Add dashboard/admin management for providers and routes now that operator runtime management is required.
+  - [x] 8.3.1 Add normalized dashboard-managed provider/route tables, encrypted provider API-key storage, migrations, repository/service/cache, and cache invalidation.
+  - [x] 8.3.2 Merge dashboard-managed config with env config at route resolution time, with dashboard rows taking precedence and no process restart required.
+  - [x] 8.3.3 Add authenticated admin CRUD APIs under Settings for providers and exact public-model routes, with validation and redacted secret responses.
+  - [x] 8.3.4 Add a Settings submenu/card for external model routing; do not create a separate standalone GUI.
+  - [x] 8.3.5 Add backend, migration, and frontend tests covering create/update/delete, secret redaction, route cache invalidation, and live proxy routing from dashboard config.
 
 ## 9. Verification
 

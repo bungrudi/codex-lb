@@ -55,12 +55,13 @@ class ExternalProviderConfig:
     id: str
     kind: ExternalProviderKind
     base_url: str
-    api_key_env: str
+    api_key_env: str | None
     default_headers: dict[str, str] = field(default_factory=dict)
     timeout_seconds: float = 600.0
     stream_idle_timeout_seconds: float = 600.0
     enabled: bool = True
     allow_insecure_base_url: bool = False
+    api_key: str | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,76 @@ class ExternalModelRouteConfig:
     request_overrides: dict[str, JsonValue] = field(default_factory=dict)
     strip_request_fields: frozenset[str] = frozenset()
     pricing: ExternalProviderPricing | None = None
+
+
+def build_external_provider_config(
+    *,
+    provider_id: str,
+    kind: str = "openai_compatible",
+    base_url: str,
+    api_key_env: str | None = None,
+    api_key: str | None = None,
+    default_headers: dict[str, str] | None = None,
+    timeout_seconds: float = 600.0,
+    stream_idle_timeout_seconds: float = 600.0,
+    enabled: bool = True,
+    allow_insecure_base_url: bool = False,
+) -> ExternalProviderConfig:
+    normalized_id = _normalize_provider_id(provider_id)
+    if kind != "openai_compatible":
+        raise ValueError(f"external provider '{provider_id}' kind must be 'openai_compatible'")
+    normalized_base_url = _required_string(base_url, f"external provider '{provider_id}'.base_url").rstrip("/")
+    _validate_base_url(normalized_base_url, allow_insecure=allow_insecure_base_url, provider_id=normalized_id)
+    normalized_api_key_env: str | None = None
+    if api_key_env is not None and api_key_env.strip():
+        normalized_api_key_env = _required_string(api_key_env, f"external provider '{provider_id}'.api_key_env")
+        _validate_env_name(normalized_api_key_env, provider_id=normalized_id)
+    return ExternalProviderConfig(
+        id=normalized_id,
+        kind="openai_compatible",
+        base_url=normalized_base_url,
+        api_key_env=normalized_api_key_env,
+        default_headers=default_headers or {},
+        timeout_seconds=_positive_float(timeout_seconds, f"external provider '{provider_id}'.timeout_seconds"),
+        stream_idle_timeout_seconds=_positive_float(
+            stream_idle_timeout_seconds,
+            f"external provider '{provider_id}'.stream_idle_timeout_seconds",
+        ),
+        enabled=enabled,
+        allow_insecure_base_url=allow_insecure_base_url,
+        api_key=api_key.strip() if isinstance(api_key, str) and api_key.strip() else None,
+    )
+
+
+def build_external_model_route_config(
+    *,
+    public_model: str,
+    provider_id: str,
+    target_model: str,
+    endpoints: list[str] | str,
+    preserve_public_model: bool = True,
+    fallback_to_codex_pool: bool = False,
+    enabled: bool = True,
+    request_overrides: dict[str, JsonValue] | None = None,
+    strip_request_fields: list[str] | str | None = None,
+    pricing: JsonValue = None,
+) -> ExternalModelRouteConfig:
+    normalized_public_model = _normalize_model_id(public_model, field_name="external route public model")
+    if fallback_to_codex_pool:
+        raise ValueError(f"external route '{normalized_public_model}' fallback_to_codex_pool is not supported yet")
+    strip_fields_value = strip_request_fields if strip_request_fields is not None else []
+    return ExternalModelRouteConfig(
+        public_model=normalized_public_model,
+        provider_id=_normalize_provider_id(provider_id),
+        target_model=_normalize_model_id(target_model, field_name=f"external route '{public_model}'.target_model"),
+        endpoints=_parse_endpoints(endpoints, public_model=normalized_public_model),
+        preserve_public_model=preserve_public_model,
+        fallback_to_codex_pool=fallback_to_codex_pool,
+        enabled=enabled,
+        request_overrides=_json_mapping_value(request_overrides or {}, field_name="request_overrides"),
+        strip_request_fields=frozenset(_string_list(strip_fields_value, field_name="strip_request_fields")),
+        pricing=_parse_pricing(pricing, public_model=normalized_public_model),
+    )
 
 
 def parse_external_provider_configs(value: JsonValue) -> dict[str, ExternalProviderConfig]:

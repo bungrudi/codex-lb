@@ -3,16 +3,27 @@ import { toast } from "sonner";
 
 import {
   addUpstreamProxyPoolMember,
+  createExternalModelRoute,
+  createExternalProvider,
   createUpstreamProxyEndpoint,
   createUpstreamProxyPool,
+  deleteExternalModelRoute,
+  deleteExternalProvider,
+  getExternalModelRoutingAdmin,
   getSettings,
   getUpstreamProxyAdmin,
   putAccountProxyBinding,
+  updateExternalModelRoute,
+  updateExternalProvider,
   updateSettings,
 } from "@/features/settings/api";
 import type { SettingsUpdateRequest } from "@/features/settings/schemas";
 import type {
   AccountProxyBindingRequest,
+  ExternalModelRouteCreateRequest,
+  ExternalModelRouteUpdateRequest,
+  ExternalProviderCreateRequest,
+  ExternalProviderUpdateRequest,
   UpstreamProxyEndpointCreateRequest,
   UpstreamProxyPoolCreateRequest,
   UpstreamProxyPoolMemberRequest,
@@ -41,6 +52,97 @@ export function useSettings() {
   return {
     settingsQuery,
     updateSettingsMutation,
+  };
+}
+
+export function useExternalModelRoutingAdmin() {
+  const queryClient = useQueryClient();
+
+  const externalRoutingQuery = useQuery({
+    queryKey: ["settings", "external-model-routing"],
+    queryFn: getExternalModelRoutingAdmin,
+  });
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["settings", "external-model-routing"] });
+  };
+
+  const createProviderMutation = useMutation({
+    mutationFn: (payload: ExternalProviderCreateRequest) => createExternalProvider(payload),
+    onSuccess: () => {
+      toast.success("External provider created");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External provider creation failed");
+    },
+  });
+
+  const updateProviderMutation = useMutation({
+    mutationFn: ({ providerId, payload }: { providerId: string; payload: ExternalProviderUpdateRequest }) =>
+      updateExternalProvider(providerId, payload),
+    onSuccess: () => {
+      toast.success("External provider saved");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External provider update failed");
+    },
+  });
+
+  const deleteProviderMutation = useMutation({
+    mutationFn: (providerId: string) => deleteExternalProvider(providerId),
+    onSuccess: () => {
+      toast.success("External provider deleted");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External provider deletion failed");
+    },
+  });
+
+  const createRouteMutation = useMutation({
+    mutationFn: (payload: ExternalModelRouteCreateRequest) => createExternalModelRoute(payload),
+    onSuccess: () => {
+      toast.success("External model route created");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External model route creation failed");
+    },
+  });
+
+  const updateRouteMutation = useMutation({
+    mutationFn: ({ publicModel, payload }: { publicModel: string; payload: ExternalModelRouteUpdateRequest }) =>
+      updateExternalModelRoute(publicModel, payload),
+    onSuccess: () => {
+      toast.success("External model route saved");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External model route update failed");
+    },
+  });
+
+  const deleteRouteMutation = useMutation({
+    mutationFn: (publicModel: string) => deleteExternalModelRoute(publicModel),
+    onSuccess: () => {
+      toast.success("External model route deleted");
+      invalidate();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "External model route deletion failed");
+    },
+  });
+
+  return {
+    externalRoutingQuery,
+    createProviderMutation,
+    updateProviderMutation,
+    deleteProviderMutation,
+    createRouteMutation,
+    updateRouteMutation,
+    deleteRouteMutation,
   };
 }
 

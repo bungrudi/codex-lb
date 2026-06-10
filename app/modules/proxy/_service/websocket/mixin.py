@@ -54,6 +54,7 @@ from app.core.errors import (
     response_failed_event,
 )
 from app.core.exceptions import AppError, ProxyAuthError
+from app.core.external_providers.resolver import ExternalRouteResolutionStatus, resolve_external_model_route_async
 from app.core.openai.exceptions import ClientPayloadError
 from app.core.openai.models import OpenAIEvent
 from app.core.openai.parsing import parse_sse_event
@@ -658,12 +659,11 @@ class _WebSocketMixin:
                                         _serialize_websocket_error_event(_app_error_to_websocket_event(exc))
                                     )
                                 continue
-                            external_route = (
-                                runtime_settings.external_model_routes_json.get(effective_model)
-                                if effective_model is not None
-                                else None
+                            external_resolution = await resolve_external_model_route_async(
+                                effective_model,
+                                "responses.websocket",
                             )
-                            if external_route is not None and external_route.enabled:
+                            if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
                                 async with client_send_lock:
                                     await websocket.send_text(
                                         _serialize_websocket_error_event(

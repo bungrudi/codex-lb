@@ -473,6 +473,47 @@ def test_external_provider_request_log_fields_migration_adds_columns(tmp_path: P
         assert expected_columns.issubset(columns)
 
 
+def test_external_model_route_admin_tables_migration_adds_tables(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-admin-tables.db"
+    url = _db_url(db_path)
+    pre_revision = "20260609_000000_add_external_provider_request_log_fields"
+    target_revision = "20260610_000000_add_external_model_route_admin_tables"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        assert not inspector.has_table("external_providers")
+        assert not inspector.has_table("external_model_routes")
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        assert inspector.has_table("external_providers")
+        assert inspector.has_table("external_model_routes")
+        provider_columns = {column["name"] for column in inspector.get_columns("external_providers")}
+        route_columns = {column["name"] for column in inspector.get_columns("external_model_routes")}
+        assert {
+            "id",
+            "base_url",
+            "api_key_encrypted",
+            "api_key_env",
+            "default_headers_json",
+            "allow_insecure_base_url",
+        }.issubset(provider_columns)
+        assert {
+            "public_model",
+            "provider_id",
+            "target_model",
+            "endpoints_json",
+            "request_overrides_json",
+            "strip_request_fields_json",
+        }.issubset(route_columns)
+
+
 def test_quota_planner_migration_repairs_preexisting_request_kind_column(tmp_path: Path) -> None:
     db_path = tmp_path / "quota-planner-request-kind-drift.db"
     url = _db_url(db_path)

@@ -9,6 +9,7 @@ import { FirewallSection } from "@/features/firewall/components/firewall-section
 import { QuotaPlannerSection } from "@/features/quota-planner/components/quota-planner-section";
 import { buildSettingsUpdateRequest } from "@/features/settings/payload";
 import { AppearanceSettings } from "@/features/settings/components/appearance-settings";
+import { ExternalModelRoutingSettings } from "@/features/settings/components/external-model-routing-settings";
 import { ImportSettings } from "@/features/settings/components/import-settings";
 import { PasswordSettings } from "@/features/settings/components/password-settings";
 import { RoutingSettings } from "@/features/settings/components/routing-settings";
@@ -17,7 +18,11 @@ import { SettingsSkeleton } from "@/features/settings/components/settings-skelet
 import { UpstreamProxySettings } from "@/features/settings/components/upstream-proxy-settings";
 import { StickySessionsSection } from "@/features/sticky-sessions/components/sticky-sessions-section";
 import { useAuthStore } from "@/features/auth/hooks/use-auth";
-import { useSettings, useUpstreamProxyAdmin } from "@/features/settings/hooks/use-settings";
+import {
+  useExternalModelRoutingAdmin,
+  useSettings,
+  useUpstreamProxyAdmin,
+} from "@/features/settings/hooks/use-settings";
 import type { SettingsUpdateRequest } from "@/features/settings/schemas";
 import { getErrorMessageOrNull } from "@/utils/errors";
 
@@ -34,6 +39,15 @@ export function SettingsPage() {
     createPoolMutation,
     addPoolMemberMutation,
   } = useUpstreamProxyAdmin();
+  const {
+    externalRoutingQuery,
+    createProviderMutation,
+    updateProviderMutation,
+    deleteProviderMutation,
+    createRouteMutation,
+    updateRouteMutation,
+    deleteRouteMutation,
+  } = useExternalModelRoutingAdmin();
   const authMode = useAuthStore((state) => state.authMode);
   const passwordManagementEnabled = useAuthStore((state) => state.passwordManagementEnabled);
   const passwordSessionActive = useAuthStore((state) => state.passwordSessionActive);
@@ -43,14 +57,27 @@ export function SettingsPage() {
     updateSettingsMutation.isPending ||
     createEndpointMutation.isPending ||
     createPoolMutation.isPending ||
-    addPoolMemberMutation.isPending;
+    addPoolMemberMutation.isPending ||
+    createProviderMutation.isPending ||
+    updateProviderMutation.isPending ||
+    deleteProviderMutation.isPending ||
+    createRouteMutation.isPending ||
+    updateRouteMutation.isPending ||
+    deleteRouteMutation.isPending;
   const error =
     getErrorMessageOrNull(settingsQuery.error) ||
     getErrorMessageOrNull(upstreamProxyQuery.error) ||
+    getErrorMessageOrNull(externalRoutingQuery.error) ||
     getErrorMessageOrNull(updateSettingsMutation.error) ||
     getErrorMessageOrNull(createEndpointMutation.error) ||
     getErrorMessageOrNull(createPoolMutation.error) ||
-    getErrorMessageOrNull(addPoolMemberMutation.error);
+    getErrorMessageOrNull(addPoolMemberMutation.error) ||
+    getErrorMessageOrNull(createProviderMutation.error) ||
+    getErrorMessageOrNull(updateProviderMutation.error) ||
+    getErrorMessageOrNull(deleteProviderMutation.error) ||
+    getErrorMessageOrNull(createRouteMutation.error) ||
+    getErrorMessageOrNull(updateRouteMutation.error) ||
+    getErrorMessageOrNull(deleteRouteMutation.error);
 
   const handleSave = async (payload: SettingsUpdateRequest) => {
     await updateSettingsMutation.mutateAsync(payload);
@@ -103,6 +130,22 @@ export function SettingsPage() {
               busy={busy}
               onSave={handleSave}
             />
+            {externalRoutingQuery.data ? (
+              <ExternalModelRoutingSettings
+                admin={externalRoutingQuery.data}
+                busy={busy}
+                onCreateProvider={(payload) => createProviderMutation.mutateAsync(payload)}
+                onUpdateProvider={(providerId, payload) =>
+                  updateProviderMutation.mutateAsync({ providerId, payload })
+                }
+                onDeleteProvider={(providerId) => deleteProviderMutation.mutateAsync(providerId)}
+                onCreateRoute={(payload) => createRouteMutation.mutateAsync(payload)}
+                onUpdateRoute={(publicModel, payload) =>
+                  updateRouteMutation.mutateAsync({ publicModel, payload })
+                }
+                onDeleteRoute={(publicModel) => deleteRouteMutation.mutateAsync(publicModel)}
+              />
+            ) : null}
             {upstreamProxyQuery.data ? (
               <UpstreamProxySettings
                 admin={upstreamProxyQuery.data}

@@ -59,7 +59,7 @@ from app.core.external_providers.openai_compatible import ExternalProviderError,
 from app.core.external_providers.resolver import (
     ExternalRouteResolution,
     ExternalRouteResolutionStatus,
-    resolve_external_model_route,
+    resolve_external_model_route_async,
 )
 from app.core.external_providers.response_rewrite import rewrite_public_model_in_payload, rewrite_public_model_in_sse
 from app.core.external_providers.usage import ExternalProviderUsage, extract_external_provider_usage
@@ -2251,7 +2251,7 @@ async def v1_chat_completions(
         error = openai_validation_error(exc)
         return _logged_error_json_response(request, 400, error, headers=rate_limit_headers)
     apply_api_key_enforcement(responses_payload, api_key)
-    external_resolution = resolve_external_model_route(responses_payload.model, "chat.completions")
+    external_resolution = await resolve_external_model_route_async(responses_payload.model, "chat.completions")
     if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
         return await _handle_external_chat_completions(
             request,
@@ -2632,7 +2632,7 @@ async def _stream_responses(
     validate_model_access(api_key, payload.model)
     rate_limit_headers = await context.service.rate_limit_headers() if include_rate_limit_headers else {}
     if external_route_endpoint is not None:
-        external_resolution = resolve_external_model_route(payload.model, external_route_endpoint)
+        external_resolution = await resolve_external_model_route_async(payload.model, external_route_endpoint)
         if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
             return await _handle_external_responses(
                 request,
@@ -2766,7 +2766,7 @@ async def _collect_responses(
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
     rate_limit_headers = await context.service.rate_limit_headers()
-    external_resolution = resolve_external_model_route(payload.model, "responses")
+    external_resolution = await resolve_external_model_route_async(payload.model, "responses")
     if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
         return await _handle_external_responses(
             request,
@@ -2903,7 +2903,7 @@ async def _compact_responses(
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
     rate_limit_headers = await context.service.rate_limit_headers()
-    external_resolution = resolve_external_model_route(payload.model, "responses.compact")
+    external_resolution = await resolve_external_model_route_async(payload.model, "responses.compact")
     if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
         unsupported_resolution = ExternalRouteResolution(
             ExternalRouteResolutionStatus.ENDPOINT_UNSUPPORTED,
