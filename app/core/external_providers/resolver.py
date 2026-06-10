@@ -14,6 +14,7 @@ class ExternalRouteResolutionStatus(StrEnum):
     MATCH = "match"
     ENDPOINT_UNSUPPORTED = "endpoint_unsupported"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
+    ROUTE_CONFLICT = "route_conflict"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +43,7 @@ def resolve_external_model_route(
         public_model,
         endpoint,
         providers=effective_settings.external_providers_json,
-        routes=effective_settings.external_model_routes_json,
+        routes=tuple(effective_settings.external_model_routes_json.values()),
         environ=environ,
     )
 
@@ -68,21 +69,36 @@ def _resolve_external_model_route_from_config(
     endpoint: ExternalRouteEndpoint,
     *,
     providers: dict[str, ExternalProviderConfig],
-    routes: dict[str, ExternalModelRouteConfig],
+    routes: tuple[ExternalModelRouteConfig, ...],
     environ: dict[str, str] | None = None,
 ) -> ExternalRouteResolution:
     if not isinstance(public_model, str) or not public_model.strip():
         return ExternalRouteResolution(ExternalRouteResolutionStatus.NO_ROUTE)
 
-    route = routes.get(public_model.strip())
-    if route is None or not route.enabled:
+    normalized_model = public_model.strip()
+    active_routes = [route for route in routes if route.enabled and route.public_model == normalized_model]
+    if not active_routes:
         return ExternalRouteResolution(ExternalRouteResolutionStatus.NO_ROUTE)
 
-    if endpoint not in route.endpoints:
+    dashboard_matches = [
+        route for route in active_routes if route.source == "dashboard" and endpoint in route.endpoints
+    ]
+    if len(dashboard_matches) > 1:
+        return ExternalRouteResolution(
+            ExternalRouteResolutionStatus.ROUTE_CONFLICT,
+            route=dashboard_matches[0],
+            reason=f"Multiple active external routes match model '{normalized_model}' and endpoint '{endpoint}'",
+        )
+    env_matches = [route for route in active_routes if route.source == "env" and endpoint in route.endpoints]
+    if dashboard_matches:
+        route = dashboard_matches[0]
+    elif env_matches:
+        route = env_matches[0]
+    else:
         return ExternalRouteResolution(
             ExternalRouteResolutionStatus.ENDPOINT_UNSUPPORTED,
-            route=route,
-            reason=f"External route for model '{route.public_model}' does not support endpoint '{endpoint}'",
+            route=active_routes[0],
+            reason=f"External route for model '{normalized_model}' does not support endpoint '{endpoint}'",
         )
 
     provider = providers.get(route.provider_id)

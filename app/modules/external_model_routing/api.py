@@ -62,19 +62,19 @@ async def create_external_model_route(
     return await context.service.create_route(payload)
 
 
-@router.put("/routes/{public_model:path}", response_model=ExternalModelRouteResponse)
+@router.put("/routes/{route_id}", response_model=ExternalModelRouteResponse)
 async def update_external_model_route(
-    public_model: str,
+    route_id: str,
     payload: ExternalModelRouteUpdateRequest,
     context: ExternalModelRoutingContext = Depends(get_external_model_routing_context),
 ) -> ExternalModelRouteResponse:
-    return await context.service.update_route(public_model, payload)
+    return await context.service.update_route(route_id, payload)
 
 
-@router.delete("/routes/{public_model:path}", status_code=204)
+@router.delete("/routes/{route_id}", status_code=204)
 async def delete_external_model_route(
-    public_model: str,
+    route_id: str,
     context: ExternalModelRoutingContext = Depends(get_external_model_routing_context),
 ) -> Response:
-    await context.service.delete_route(public_model)
+    await context.service.delete_route(route_id)
     return Response(status_code=204)

@@ -23,6 +23,7 @@ type ExternalRouteEndpoint = Literal[
     "images.edits",
 ]
 type ExternalPricingMode = Literal["none", "public_model", "provider_custom"]
+type ExternalRouteSource = Literal["env", "dashboard"]
 
 EXTERNAL_PROVIDER_ENDPOINTS: frozenset[str] = frozenset(
     {
@@ -76,6 +77,9 @@ class ExternalModelRouteConfig:
     request_overrides: dict[str, JsonValue] = field(default_factory=dict)
     strip_request_fields: frozenset[str] = frozenset()
     pricing: ExternalProviderPricing | None = None
+    route_id: str | None = None
+    name: str | None = None
+    source: ExternalRouteSource = "env"
 
 
 def build_external_provider_config(
@@ -129,6 +133,9 @@ def build_external_model_route_config(
     request_overrides: dict[str, JsonValue] | None = None,
     strip_request_fields: list[str] | str | None = None,
     pricing: JsonValue = None,
+    route_id: str | None = None,
+    name: str | None = None,
+    source: ExternalRouteSource = "env",
 ) -> ExternalModelRouteConfig:
     normalized_public_model = _normalize_model_id(public_model, field_name="external route public model")
     if fallback_to_codex_pool:
@@ -145,6 +152,9 @@ def build_external_model_route_config(
         request_overrides=_json_mapping_value(request_overrides or {}, field_name="request_overrides"),
         strip_request_fields=frozenset(_string_list(strip_fields_value, field_name="strip_request_fields")),
         pricing=_parse_pricing(pricing, public_model=normalized_public_model),
+        route_id=route_id.strip() if isinstance(route_id, str) and route_id.strip() else None,
+        name=name.strip() if isinstance(name, str) and name.strip() else None,
+        source=source,
     )
 
 

@@ -142,10 +142,8 @@ class ExternalModelRoutingService:
         await get_external_routing_config_cache().invalidate()
 
     async def create_route(self, payload: ExternalModelRouteCreateRequest) -> ExternalModelRouteResponse:
-        existing = await self._repository.get_route(payload.public_model)
-        if existing is not None:
-            raise DashboardConflictError("External model route already exists", code="external_model_route_exists")
         await self._require_provider(payload.provider_id)
+        await self._validate_unique_route_name(payload.public_model, payload.name, exclude_route_id=None)
         route_config = self._validate_route_payload(
             public_model=payload.public_model,
             provider_id=payload.provider_id,
@@ -159,6 +157,7 @@ class ExternalModelRoutingService:
             pricing=payload.pricing,
         )
         row = ExternalModelRoute(
+            name=payload.name.strip(),
             public_model=route_config.public_model,
             provider_id=route_config.provider_id,
             target_model=route_config.target_model,
@@ -170,6 +169,19 @@ class ExternalModelRoutingService:
             pricing_json=_dump_json_object(payload.pricing) if payload.pricing is not None else None,
             is_active=route_config.enabled,
         )
+        if row.is_active:
+            if payload.deactivate_conflicts:
+                await self._deactivate_conflicting_routes(
+                    public_model=row.public_model,
+                    endpoints=route_config.endpoints,
+                    exclude_route_id=None,
+                )
+            else:
+                await self._raise_on_active_conflicts(
+                    public_model=row.public_model,
+                    endpoints=route_config.endpoints,
+                    exclude_route_id=None,
+                )
         row = await self._repository.add_route(row)
         await get_external_routing_config_cache().invalidate()
         providers = {provider.id: provider for provider in await self._repository.list_providers()}
@@ -177,10 +189,12 @@ class ExternalModelRoutingService:
 
     async def update_route(
         self,
-        public_model: str,
+        route_id: str,
         payload: ExternalModelRouteUpdateRequest,
     ) -> ExternalModelRouteResponse:
-        row = await self._require_route(public_model)
+        row = await self._require_route(route_id)
+        next_name = payload.name.strip() if payload.name is not None else row.name
+        await self._validate_unique_route_name(row.public_model, next_name, exclude_route_id=row.id)
         next_provider_id = payload.provider_id if payload.provider_id is not None else row.provider_id
         await self._require_provider(next_provider_id)
         next_target_model = payload.target_model if payload.target_model is not None else row.target_model
@@ -217,6 +231,7 @@ class ExternalModelRoutingService:
             strip_request_fields=next_strip_fields,
             pricing=next_pricing,
         )
+        row.name = next_name
         row.provider_id = route_config.provider_id
         row.target_model = route_config.target_model
         row.endpoints_json = _dump_string_list(sorted(route_config.endpoints))
@@ -226,13 +241,26 @@ class ExternalModelRoutingService:
         row.fallback_to_codex_pool = route_config.fallback_to_codex_pool
         row.pricing_json = _dump_json_object(next_pricing) if next_pricing is not None else None
         row.is_active = route_config.enabled
+        if row.is_active:
+            if payload.deactivate_conflicts:
+                await self._deactivate_conflicting_routes(
+                    public_model=row.public_model,
+                    endpoints=route_config.endpoints,
+                    exclude_route_id=row.id,
+                )
+            else:
+                await self._raise_on_active_conflicts(
+                    public_model=row.public_model,
+                    endpoints=route_config.endpoints,
+                    exclude_route_id=row.id,
+                )
         row = await self._repository.save_route(row)
         await get_external_routing_config_cache().invalidate()
         providers = {provider.id: provider for provider in await self._repository.list_providers()}
         return self._route_response(row, provider_map=providers)
 
-    async def delete_route(self, public_model: str) -> None:
-        row = await self._require_route(public_model)
+    async def delete_route(self, route_id: str) -> None:
+        row = await self._require_route(route_id)
         await self._repository.delete_route(row)
         await get_external_routing_config_cache().invalidate()
 
@@ -242,11 +270,57 @@ class ExternalModelRoutingService:
             raise DashboardNotFoundError("External provider not found", code="external_provider_not_found")
         return row
 
-    async def _require_route(self, public_model: str) -> ExternalModelRoute:
-        row = await self._repository.get_route(public_model.strip())
+    async def _require_route(self, route_id: str) -> ExternalModelRoute:
+        row = await self._repository.get_route(route_id.strip())
         if row is None:
             raise DashboardNotFoundError("External model route not found", code="external_model_route_not_found")
         return row
+
+    async def _validate_unique_route_name(
+        self,
+        public_model: str,
+        name: str,
+        *,
+        exclude_route_id: str | None,
+    ) -> None:
+        normalized_name = name.strip()
+        for route in await self._repository.list_routes():
+            if route.public_model != public_model.strip() or route.id == exclude_route_id:
+                continue
+            if route.name == normalized_name:
+                raise DashboardConflictError(
+                    "External model route profile already exists for this public model",
+                    code="external_model_route_exists",
+                )
+
+    async def _deactivate_conflicting_routes(
+        self,
+        *,
+        public_model: str,
+        endpoints: frozenset[str],
+        exclude_route_id: str | None,
+    ) -> None:
+        for route in await self._repository.list_routes():
+            if route.public_model != public_model or route.id == exclude_route_id or not route.is_active:
+                continue
+            if endpoints.intersection(_parse_string_list(route.endpoints_json)):
+                route.is_active = False
+
+    async def _raise_on_active_conflicts(
+        self,
+        *,
+        public_model: str,
+        endpoints: frozenset[str],
+        exclude_route_id: str | None,
+    ) -> None:
+        for route in await self._repository.list_routes():
+            if route.public_model != public_model or route.id == exclude_route_id or not route.is_active:
+                continue
+            if endpoints.intersection(_parse_string_list(route.endpoints_json)):
+                raise DashboardConflictError(
+                    "External model route profile conflicts with an active profile for this endpoint",
+                    code="external_model_route_conflict",
+                )
 
     def _validate_provider_payload(
         self,
@@ -334,6 +408,8 @@ class ExternalModelRoutingService:
     ) -> ExternalModelRouteResponse:
         status, status_message = self._route_status(row, provider_map=provider_map)
         return ExternalModelRouteResponse(
+            id=row.id,
+            name=row.name,
             public_model=row.public_model,
             provider_id=row.provider_id,
             target_model=row.target_model,

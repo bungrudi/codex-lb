@@ -91,13 +91,13 @@ export function createExternalModelRoute(payload: unknown) {
   return post(`${EXTERNAL_MODEL_ROUTING_PATH}/routes`, ExternalModelRouteSchema, { body: validated });
 }
 
-export function updateExternalModelRoute(publicModel: string, payload: unknown) {
+export function updateExternalModelRoute(routeId: string, payload: unknown) {
   const validated = ExternalModelRouteUpdateRequestSchema.parse(payload);
-  return put(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(publicModel)}`, ExternalModelRouteSchema, {
+  return put(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(routeId)}`, ExternalModelRouteSchema, {
     body: validated,
   });
 }
 
-export function deleteExternalModelRoute(publicModel: string) {
-  return del(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(publicModel)}`);
+export function deleteExternalModelRoute(routeId: string) {
+  return del(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(routeId)}`);
 }

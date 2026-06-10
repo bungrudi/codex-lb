@@ -51,6 +51,7 @@
   - [x] 8.3.3 Add authenticated admin CRUD APIs under Settings for providers and exact public-model routes, with validation and redacted secret responses.
   - [x] 8.3.4 Add a Settings submenu/card for external model routing; do not create a separate standalone GUI.
   - [x] 8.3.5 Add backend, migration, and frontend tests covering create/update/delete, secret redaction, route cache invalidation, and live proxy routing from dashboard config.
+  - [x] 8.3.6 Add route profiles so multiple saved mappings can share a public model, activation switches conflicting same-endpoint profiles without deletion, and active-map UI shows live routing.
 
 ## 9. Verification
 

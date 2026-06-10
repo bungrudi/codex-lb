@@ -3786,6 +3786,14 @@ def _external_route_public_error(
             openai_error("external_route_endpoint_unsupported", message, error_type="invalid_request_error"),
             headers=headers,
         )
+    if resolution.status == ExternalRouteResolutionStatus.ROUTE_CONFLICT:
+        message = resolution.reason or "Multiple active external routes match this endpoint"
+        return _logged_error_json_response(
+            request,
+            409,
+            openai_error("external_route_conflict", message, error_type="invalid_request_error"),
+            headers=headers,
+        )
     message = resolution.reason or "External provider is unavailable"
     return _logged_error_json_response(
         request,

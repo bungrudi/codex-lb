@@ -66,9 +66,12 @@ describe("ExternalModelRoutingSettings", () => {
     await user.click(screen.getByRole("button", { name: "Update key" }));
     expect(onUpdateProvider).toHaveBeenCalledWith("openrouter", { apiKey: "test-new" });
 
-    await user.clear(screen.getByLabelText("Target model for external route gpt-5.3-codex"));
-    await user.type(screen.getByLabelText("Target model for external route gpt-5.3-codex"), "new/model");
+    await user.clear(screen.getByLabelText("Target model for external route Minimax Codex"));
+    await user.type(screen.getByLabelText("Target model for external route Minimax Codex"), "new/model");
     await user.click(screen.getByRole("button", { name: "Retarget" }));
-    expect(onUpdateRoute).toHaveBeenCalledWith("gpt-5.3-codex", { targetModel: "new/model" });
+    expect(onUpdateRoute).toHaveBeenCalledWith("route_minimax_codex", {
+      targetModel: "new/model",
+      deactivateConflicts: true,
+    });
   });
 });

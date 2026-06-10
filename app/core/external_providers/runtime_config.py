@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True, slots=True)
 class EffectiveExternalRoutingConfig:
     providers: dict[str, ExternalProviderConfig]
-    routes: dict[str, ExternalModelRouteConfig]
+    routes: tuple[ExternalModelRouteConfig, ...]
 
 
 class ExternalRoutingConfigCache:
@@ -69,17 +69,28 @@ def get_external_routing_config_cache() -> ExternalRoutingConfigCache:
 async def load_effective_external_routing_config() -> EffectiveExternalRoutingConfig:
     settings = get_settings()
     providers = dict(settings.external_providers_json)
-    routes = dict(settings.external_model_routes_json)
+    env_routes = tuple(settings.external_model_routes_json.values())
     dashboard_config = await load_dashboard_external_routing_config()
     providers.update(dashboard_config.providers)
-    routes.update(dashboard_config.routes)
+    dashboard_route_keys = {
+        (route.public_model, endpoint)
+        for route in dashboard_config.routes
+        if route.enabled
+        for endpoint in route.endpoints
+    }
+    effective_env_routes = tuple(
+        route
+        for route in env_routes
+        if not any((route.public_model, endpoint) in dashboard_route_keys for endpoint in route.endpoints)
+    )
+    routes = (*dashboard_config.routes, *effective_env_routes)
     return EffectiveExternalRoutingConfig(providers=providers, routes=routes)
 
 
 async def load_dashboard_external_routing_config() -> EffectiveExternalRoutingConfig:
     encryptor = TokenEncryptor()
     providers: dict[str, ExternalProviderConfig] = {}
-    routes: dict[str, ExternalModelRouteConfig] = {}
+    routes: list[ExternalModelRouteConfig] = []
     try:
         async with SessionLocal() as session:
             provider_rows = (
@@ -95,10 +106,10 @@ async def load_dashboard_external_routing_config() -> EffectiveExternalRoutingCo
             for row in route_rows:
                 route = _route_config_from_row(row)
                 if route is not None:
-                    routes[route.public_model] = route
+                    routes.append(route)
     except SQLAlchemyError:
         logger.warning("Dashboard external routing config unavailable; using environment config only", exc_info=True)
-    return EffectiveExternalRoutingConfig(providers=providers, routes=routes)
+    return EffectiveExternalRoutingConfig(providers=providers, routes=tuple(routes))
 
 
 def _provider_config_from_row(
@@ -140,6 +151,9 @@ def _route_config_from_row(row: ExternalModelRoute) -> ExternalModelRouteConfig 
             request_overrides=_parse_json_object(row.request_overrides_json),
             strip_request_fields=_parse_string_list(row.strip_request_fields_json),
             pricing=_parse_optional_json_object(row.pricing_json),
+            route_id=row.id,
+            name=row.name,
+            source="dashboard",
         )
     except (TypeError, ValueError) as exc:
         logger.warning("Skipping invalid dashboard external route %s: %s", row.public_model, exc)

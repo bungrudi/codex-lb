@@ -295,6 +295,8 @@ export const ExternalProviderUpdateRequestSchema = ExternalProviderCreateRequest
   .extend({ clearApiKey: z.boolean().optional() });
 
 export const ExternalModelRouteSchema = z.object({
+  id: z.string(),
+  name: z.string(),
   publicModel: z.string(),
   providerId: z.string(),
   targetModel: z.string(),
@@ -305,13 +307,14 @@ export const ExternalModelRouteSchema = z.object({
   requestOverrides: JsonObjectSchema.default({}),
   stripRequestFields: z.array(z.string()).default([]),
   pricing: JsonObjectSchema.nullable().optional(),
-  status: z.enum(["active", "disabled", "provider_disabled", "missing_api_key"]),
+  status: z.enum(["active", "disabled", "provider_disabled", "missing_api_key", "conflict"]),
   statusMessage: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export const ExternalModelRouteCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(255),
   publicModel: z.string().trim().min(1).max(255),
   providerId: ProviderIdSchema,
   targetModel: z.string().trim().min(1).max(255),
@@ -322,6 +325,7 @@ export const ExternalModelRouteCreateRequestSchema = z.object({
   requestOverrides: JsonObjectSchema.optional().default({}),
   stripRequestFields: z.array(z.string()).optional().default([]),
   pricing: JsonObjectSchema.nullable().optional(),
+  deactivateConflicts: z.boolean().optional().default(true),
 });
 
 export const ExternalModelRouteUpdateRequestSchema = ExternalModelRouteCreateRequestSchema.omit({ publicModel: true })

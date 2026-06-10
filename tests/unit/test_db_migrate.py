@@ -514,6 +514,54 @@ def test_external_model_route_admin_tables_migration_adds_tables(tmp_path: Path)
         }.issubset(route_columns)
 
 
+def test_external_model_route_profiles_migration_preserves_existing_route(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-profiles.db"
+    url = _db_url(db_path)
+    pre_revision = "20260610_000000_add_external_model_route_admin_tables"
+    target_revision = "20260610_010000_add_external_model_route_profiles"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_providers (id, base_url, api_key_env)
+                VALUES ('openrouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'gpt-5.3-codex', 'openrouter', 'minimax/minimax-m3', '["chat.completions"]'
+                )
+                """
+            )
+        )
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        columns = {column["name"] for column in inspector.get_columns("external_model_routes")}
+        assert {"id", "name", "public_model"}.issubset(columns)
+        row = connection.execute(
+            text("SELECT name, public_model, provider_id, target_model FROM external_model_routes")
+        ).one()
+        assert row.public_model == "gpt-5.3-codex"
+        assert row.provider_id == "openrouter"
+        assert row.target_model == "minimax/minimax-m3"
+        assert row.name == "openrouter → minimax/minimax-m3"
+        index_names = {index["name"] for index in inspector.get_indexes("external_model_routes")}
+        assert "idx_external_model_routes_public_model" in index_names
+
+
 def test_quota_planner_migration_repairs_preexisting_request_kind_column(tmp_path: Path) -> None:
     db_path = tmp_path / "quota-planner-request-kind-drift.db"
     url = _db_url(db_path)

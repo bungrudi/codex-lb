@@ -74,6 +74,7 @@ export function ExternalModelRoutingSettings({
   const [providerApiKey, setProviderApiKey] = useState("");
   const [providerApiKeyEnv, setProviderApiKeyEnv] = useState("");
   const [providerKeyUpdates, setProviderKeyUpdates] = useState<Record<string, string>>({});
+  const [routeName, setRouteName] = useState("Minimax Codex");
   const [publicModel, setPublicModel] = useState("gpt-5.3-codex");
   const [routeProviderId, setRouteProviderId] = useState(admin.providers[0]?.id ?? "");
   const [targetModel, setTargetModel] = useState("minimax/minimax-m3");
@@ -81,11 +82,15 @@ export function ExternalModelRoutingSettings({
     () => new Set(["chat.completions", "responses", "backend.responses"]),
   );
   const [routeTargetUpdates, setRouteTargetUpdates] = useState<Record<string, string>>({});
+  const activeRows = admin.routes
+    .filter((route) => route.isActive)
+    .flatMap((route) => route.endpoints.map((endpoint) => ({ route, endpoint })));
 
   const providerIdValue = providerId.trim().toLowerCase();
   const providerValid = providerIdValue.length > 0 && providerBaseUrl.trim().length > 0;
   const routeProviderValue = routeProviderId || admin.providers[0]?.id || "";
   const routeValid =
+    routeName.trim().length > 0 &&
     publicModel.trim().length > 0 &&
     routeProviderValue.length > 0 &&
     targetModel.trim().length > 0 &&
@@ -129,6 +134,7 @@ export function ExternalModelRoutingSettings({
       return;
     }
     await onCreateRoute({
+      name: routeName.trim(),
       publicModel: publicModel.trim(),
       providerId: routeProviderValue,
       targetModel: targetModel.trim(),
@@ -138,6 +144,7 @@ export function ExternalModelRoutingSettings({
       isActive: true,
       requestOverrides: {},
       stripRequestFields: [],
+      deactivateConflicts: true,
     });
   };
 
@@ -177,7 +184,8 @@ export function ExternalModelRoutingSettings({
           </div>
 
           <div className="space-y-2 rounded-lg border p-3">
-            <p className="text-sm font-medium">Create model route</p>
+            <p className="text-sm font-medium">Create route profile</p>
+            <Input aria-label="External route profile name" className="h-8 text-xs" value={routeName} disabled={busy} onChange={(event) => setRouteName(event.target.value)} />
             <Input aria-label="External route public model" className="h-8 text-xs" value={publicModel} disabled={busy} onChange={(event) => setPublicModel(event.target.value)} />
             <Select value={routeProviderValue} onValueChange={setRouteProviderId} disabled={busy || admin.providers.length === 0}>
               <SelectTrigger className="h-8 text-xs" aria-label="External route provider"><SelectValue placeholder="Select provider" /></SelectTrigger>
@@ -193,7 +201,7 @@ export function ExternalModelRoutingSettings({
               ))}
             </div>
             <Button type="button" size="sm" className="h-8 w-full text-xs" disabled={busy || !routeValid} onClick={() => void submitRoute()}>
-              Create route
+              Create route profile
             </Button>
           </div>
         </div>
@@ -235,38 +243,52 @@ export function ExternalModelRoutingSettings({
             </div>
           </div>
 
-          <div className="rounded-lg border p-3">
-            <p className="text-sm font-medium">Routes</p>
-            <div className="mt-2 space-y-2">
-              {admin.routes.length === 0 ? <p className="text-xs text-muted-foreground">No external routes configured.</p> : null}
-              {admin.routes.map((route) => {
-                const retargetDraft = routeTargetUpdates[route.publicModel] ?? route.targetModel;
-                return (
-                  <div key={route.publicModel} className="space-y-2 rounded-md bg-muted/50 p-2 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-medium text-foreground">{route.publicModel}</p>
-                        <p className="text-muted-foreground">{route.providerId} → {route.targetModel}</p>
-                        <p className="text-muted-foreground">{route.endpoints.join(", ")}</p>
+          <div className="space-y-3 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Active map</p>
+              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {activeRows.length === 0 ? <p>No active external routes.</p> : null}
+                {activeRows.map(({ route, endpoint }) => (
+                  <p key={`${route.id}:${endpoint}`}>
+                    <span className="font-medium text-foreground">{route.publicModel}</span> · {endpoint} · {route.name} → {route.targetModel}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium">Route profiles</p>
+              <div className="mt-2 space-y-2">
+                {admin.routes.length === 0 ? <p className="text-xs text-muted-foreground">No external route profiles configured.</p> : null}
+                {admin.routes.map((route) => {
+                  const retargetDraft = routeTargetUpdates[route.id] ?? route.targetModel;
+                  return (
+                    <div key={route.id} className="space-y-2 rounded-md bg-muted/50 p-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-foreground">{route.name}</p>
+                          <p className="text-muted-foreground">{route.publicModel} · {route.providerId} → {route.targetModel}</p>
+                          <p className="text-muted-foreground">{route.endpoints.join(", ")}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={statusVariant(route.status)}>{route.status.replaceAll("_", " ")}</Badge>
+                          <Switch aria-label={`Enable external route ${route.name}`} checked={route.isActive} disabled={busy} onCheckedChange={(checked) => void onUpdateRoute(route.id, { isActive: checked, deactivateConflicts: true })} />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={statusVariant(route.status)}>{route.status.replaceAll("_", " ")}</Badge>
-                        <Switch aria-label={`Enable external route ${route.publicModel}`} checked={route.isActive} disabled={busy} onCheckedChange={(checked) => void onUpdateRoute(route.publicModel, { isActive: checked })} />
+                      {route.statusMessage ? <AlertMessage variant="warning">{route.statusMessage}</AlertMessage> : null}
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input aria-label={`Target model for external route ${route.name}`} className="h-8 text-xs" value={retargetDraft} disabled={busy} onChange={(event) => setRouteTargetUpdates((current) => ({ ...current, [route.id]: event.target.value }))} />
+                        <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={busy || retargetDraft.trim().length === 0 || retargetDraft.trim() === route.targetModel} onClick={() => void onUpdateRoute(route.id, { targetModel: retargetDraft.trim(), deactivateConflicts: true })}>
+                          Retarget
+                        </Button>
+                        <Button type="button" size="sm" variant="destructive" className="h-8 text-xs" disabled={busy} onClick={() => void onDeleteRoute(route.id)}>
+                          Delete
+                        </Button>
                       </div>
                     </div>
-                    {route.statusMessage ? <AlertMessage variant="warning">{route.statusMessage}</AlertMessage> : null}
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input aria-label={`Target model for external route ${route.publicModel}`} className="h-8 text-xs" value={retargetDraft} disabled={busy} onChange={(event) => setRouteTargetUpdates((current) => ({ ...current, [route.publicModel]: event.target.value }))} />
-                      <Button type="button" size="sm" variant="outline" className="h-8 text-xs" disabled={busy || retargetDraft.trim().length === 0 || retargetDraft.trim() === route.targetModel} onClick={() => void onUpdateRoute(route.publicModel, { targetModel: retargetDraft.trim() })}>
-                        Retarget
-                      </Button>
-                      <Button type="button" size="sm" variant="destructive" className="h-8 text-xs" disabled={busy} onClick={() => void onDeleteRoute(route.publicModel)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

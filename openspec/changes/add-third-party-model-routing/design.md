@@ -124,18 +124,21 @@ The operator-selected GUI scope is hybrid full GUI management inside the existin
 Use normalized tables rather than adding large JSON blobs to `dashboard_settings` because operators need CRUD operations, secret metadata, route status, and future health/test actions:
 
 - `external_providers`: provider id, kind, base URL, encrypted API key, optional API-key env fallback, non-secret default headers JSON, timeouts, enabled flag, insecure-local override, timestamps.
-- `external_model_routes`: public model, provider id, target model, endpoints JSON, request overrides JSON, stripped request fields JSON, preserve-public-model flag, fallback flag, pricing JSON, enabled flag, timestamps.
+- `external_model_routes`: route profile id, display name, public model, provider id, target model, endpoints JSON, request overrides JSON, stripped request fields JSON, preserve-public-model flag, fallback flag, pricing JSON, enabled flag, timestamps.
 
-Keep environment config supported as bootstrap/static config. At runtime, build an effective config by merging env config with dashboard-managed rows. Dashboard rows take precedence for the same provider id or public model, and dashboard writes invalidate a short-lived effective-config cache so route changes work without process restart.
+Keep environment config supported as bootstrap/static config. At runtime, build an effective config by merging env config with dashboard-managed rows. Dashboard provider rows take precedence for the same provider id. Active dashboard route profiles take precedence over env routes for the same public model and endpoint, and dashboard writes invalidate a short-lived effective-config cache so route changes work without process restart.
+
+Route profiles are intentionally modeled as multiple saved rows per public model. Operators can keep `gpt-5.3-codex -> Minimax` and `gpt-5.3-codex -> DeepSeek` profiles side by side, then switch by activation. The service enforces at most one active dashboard profile for a given `(public_model, endpoint)` by deactivating overlapping active profiles when a profile is activated. Disjoint endpoint profiles for the same public model may remain active simultaneously.
 
 Provider secrets should use the existing `TokenEncryptor` pattern. Admin responses expose `api_key_configured` / `api_key_source` metadata only. Create/update requests may include a new secret; omission preserves the prior secret; an explicit clear operation removes it. The provider client can already accept an explicit API key, so the resolver/effective config layer can pass a decrypted dashboard key without placing raw secrets in public schemas.
 
 Frontend work belongs as a Settings section/submenu near existing routing and upstream proxy controls. The UI should show:
 
 - provider list/form: id, base URL, enabled flag, API-key configured badge, API-key update field, optional headers/timeouts advanced controls;
-- route list/form: public model, provider select, target model, endpoint checkboxes, enabled flag, advanced request overrides/strip fields;
+- route-profile list/form: profile name, public model, provider select, target model, endpoint checkboxes, enabled flag, advanced request overrides/strip fields;
 - warnings that external routes send prompts/tool context to the configured third-party provider;
-- route health/status hints such as missing key, provider disabled, or endpoint unsupported.
+- route health/status hints such as missing key, provider disabled, endpoint unsupported, or activation conflict.
+- active map summary grouped by public model and endpoint so the operator can see what is live now.
 
 ## Security and privacy
 

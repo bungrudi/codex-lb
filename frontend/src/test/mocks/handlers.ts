@@ -892,6 +892,7 @@ export const handlers = [
     const payload = await parseJsonBody(
       request,
       z.object({
+        name: z.string().min(1),
         publicModel: z.string().min(1),
         providerId: z.string().min(1),
         targetModel: z.string().min(1),
@@ -903,6 +904,8 @@ export const handlers = [
       return HttpResponse.json({ error: { code: "invalid_external_model_route", message: "Invalid route" } }, { status: 400 });
     }
     const route = {
+      id: `route_${state.externalModelRoutingAdmin.routes.length + 1}`,
+      name: payload.name,
       publicModel: payload.publicModel,
       providerId: payload.providerId,
       targetModel: payload.targetModel,
@@ -925,10 +928,10 @@ export const handlers = [
     return HttpResponse.json(route);
   }),
 
-  http.put("/api/settings/external-model-routing/routes/:publicModel", async ({ params, request }) => {
-    const publicModel = String(params.publicModel);
+  http.put("/api/settings/external-model-routing/routes/:routeId", async ({ params, request }) => {
+    const routeId = String(params.routeId);
     const payload = await parseJsonBody(request, z.object({ targetModel: z.string().optional(), isActive: z.boolean().optional() }).passthrough());
-    const route = state.externalModelRoutingAdmin.routes.find((item) => item.publicModel === publicModel);
+    const route = state.externalModelRoutingAdmin.routes.find((item) => item.id === routeId);
     if (!route || !payload) {
       return HttpResponse.json({ error: { code: "external_model_route_not_found", message: "Route not found" } }, { status: 404 });
     }
@@ -941,16 +944,16 @@ export const handlers = [
     };
     state.externalModelRoutingAdmin = {
       ...state.externalModelRoutingAdmin,
-      routes: state.externalModelRoutingAdmin.routes.map((item) => item.publicModel === publicModel ? updated : item),
+      routes: state.externalModelRoutingAdmin.routes.map((item) => item.id === routeId ? updated : item),
     };
     return HttpResponse.json(updated);
   }),
 
-  http.delete("/api/settings/external-model-routing/routes/:publicModel", ({ params }) => {
-    const publicModel = String(params.publicModel);
+  http.delete("/api/settings/external-model-routing/routes/:routeId", ({ params }) => {
+    const routeId = String(params.routeId);
     state.externalModelRoutingAdmin = {
       ...state.externalModelRoutingAdmin,
-      routes: state.externalModelRoutingAdmin.routes.filter((route) => route.publicModel !== publicModel),
+      routes: state.externalModelRoutingAdmin.routes.filter((route) => route.id !== routeId),
     };
     return new HttpResponse(null, { status: 204 });
   }),

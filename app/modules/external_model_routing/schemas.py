@@ -10,7 +10,7 @@ from app.core.types import JsonValue
 from app.modules.shared.schemas import DashboardModel
 
 ExternalProviderSecretSource = Literal["dashboard", "env", "missing"]
-ExternalRouteStatus = Literal["active", "disabled", "provider_disabled", "missing_api_key"]
+ExternalRouteStatus = Literal["active", "disabled", "provider_disabled", "missing_api_key", "conflict"]
 ExternalProviderKindValue = Literal["openai_compatible"]
 
 _CREDENTIAL_HEADER_NAMES = frozenset({"authorization", "x-api-key", "proxy-authorization", "cookie", "set-cookie"})
@@ -115,6 +115,7 @@ class ExternalProviderResponse(DashboardModel):
 
 
 class ExternalModelRouteCreateRequest(DashboardModel):
+    name: str = Field(min_length=1, max_length=255)
     public_model: str = Field(min_length=1, max_length=255)
     provider_id: str = Field(pattern=_PROVIDER_ID_PATTERN)
     target_model: str = Field(min_length=1, max_length=255)
@@ -125,8 +126,9 @@ class ExternalModelRouteCreateRequest(DashboardModel):
     request_overrides: dict[str, JsonValue] = Field(default_factory=dict)
     strip_request_fields: list[str] = Field(default_factory=list)
     pricing: dict[str, JsonValue] | None = None
+    deactivate_conflicts: bool = True
 
-    @field_validator("public_model", "provider_id", "target_model")
+    @field_validator("name", "public_model", "provider_id", "target_model")
     @classmethod
     def _strip_required_strings(cls, value: str) -> str:
         return value.strip()
@@ -154,6 +156,7 @@ class ExternalModelRouteCreateRequest(DashboardModel):
 
 
 class ExternalModelRouteUpdateRequest(DashboardModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     provider_id: str | None = Field(default=None, pattern=_PROVIDER_ID_PATTERN)
     target_model: str | None = Field(default=None, min_length=1, max_length=255)
     endpoints: list[str] | None = Field(default=None, min_length=1)
@@ -163,8 +166,9 @@ class ExternalModelRouteUpdateRequest(DashboardModel):
     request_overrides: dict[str, JsonValue] | None = None
     strip_request_fields: list[str] | None = None
     pricing: dict[str, JsonValue] | None = None
+    deactivate_conflicts: bool = True
 
-    @field_validator("provider_id", "target_model")
+    @field_validator("name", "provider_id", "target_model")
     @classmethod
     def _strip_optional_strings(cls, value: str | None) -> str | None:
         if value is None:
@@ -199,6 +203,8 @@ class ExternalModelRouteUpdateRequest(DashboardModel):
 
 
 class ExternalModelRouteResponse(DashboardModel):
+    id: str
+    name: str
     public_model: str
     provider_id: str
     target_model: str

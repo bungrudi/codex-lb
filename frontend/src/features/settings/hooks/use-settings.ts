@@ -113,8 +113,8 @@ export function useExternalModelRoutingAdmin() {
   });
 
   const updateRouteMutation = useMutation({
-    mutationFn: ({ publicModel, payload }: { publicModel: string; payload: ExternalModelRouteUpdateRequest }) =>
-      updateExternalModelRoute(publicModel, payload),
+    mutationFn: ({ routeId, payload }: { routeId: string; payload: ExternalModelRouteUpdateRequest }) =>
+      updateExternalModelRoute(routeId, payload),
     onSuccess: () => {
       toast.success("External model route saved");
       invalidate();
@@ -125,7 +125,7 @@ export function useExternalModelRoutingAdmin() {
   });
 
   const deleteRouteMutation = useMutation({
-    mutationFn: (publicModel: string) => deleteExternalModelRoute(publicModel),
+    mutationFn: (routeId: string) => deleteExternalModelRoute(routeId),
     onSuccess: () => {
       toast.success("External model route deleted");
       invalidate();

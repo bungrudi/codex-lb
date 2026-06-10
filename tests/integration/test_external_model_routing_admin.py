@@ -14,7 +14,7 @@ from app.db.session import get_background_session
 pytestmark = pytest.mark.integration
 
 
-async def _create_dashboard_provider_and_route(async_client, *, target_model: str = "minimax/minimax-m3") -> None:
+async def _create_dashboard_provider_and_route(async_client, *, target_model: str = "minimax/minimax-m3") -> str:
     provider = await async_client.post(
         "/api/settings/external-model-routing/providers",
         json={
@@ -34,6 +34,7 @@ async def _create_dashboard_provider_and_route(async_client, *, target_model: st
     route = await async_client.post(
         "/api/settings/external-model-routing/routes",
         json={
+            "name": "Minimax Codex",
             "publicModel": "gpt-5.3-codex",
             "providerId": "openrouter",
             "targetModel": target_model,
@@ -42,14 +43,17 @@ async def _create_dashboard_provider_and_route(async_client, *, target_model: st
     )
     assert route.status_code == 200
     route_payload = route.json()
+    assert route_payload["id"]
+    assert route_payload["name"] == "Minimax Codex"
     assert route_payload["publicModel"] == "gpt-5.3-codex"
     assert route_payload["targetModel"] == target_model
     assert route_payload["status"] == "active"
+    return str(route_payload["id"])
 
 
 @pytest.mark.asyncio
 async def test_external_model_routing_admin_crud_redacts_provider_secret(async_client):
-    await _create_dashboard_provider_and_route(async_client)
+    route_id = await _create_dashboard_provider_and_route(async_client)
 
     async with get_background_session() as session:
         encrypted = (
@@ -74,7 +78,7 @@ async def test_external_model_routing_admin_crud_redacts_provider_secret(async_c
     assert updated.json()["apiKeyConfigured"] is False
     assert updated.json()["apiKeySource"] == "missing"
 
-    deleted_route = await async_client.delete("/api/settings/external-model-routing/routes/gpt-5.3-codex")
+    deleted_route = await async_client.delete(f"/api/settings/external-model-routing/routes/{route_id}")
     assert deleted_route.status_code == 204
     deleted_provider = await async_client.delete("/api/settings/external-model-routing/providers/openrouter")
     assert deleted_provider.status_code == 204
@@ -129,6 +133,54 @@ async def test_dashboard_managed_route_drives_proxy_without_restart(async_client
     assert calls[0]["endpoint_path"] == "/chat/completions"
     assert calls[0]["payload"]["model"] == "minimax/minimax-m3"
     assert calls[0]["payload"]["messages"] == [{"role": "user", "content": "hi"}]
+
+
+@pytest.mark.asyncio
+async def test_activating_route_profile_deactivates_conflicting_profile(async_client):
+    first_route_id = await _create_dashboard_provider_and_route(async_client)
+    second = await async_client.post(
+        "/api/settings/external-model-routing/routes",
+        json={
+            "name": "DeepSeek V4 Pro",
+            "publicModel": "gpt-5.3-codex",
+            "providerId": "openrouter",
+            "targetModel": "deepseek/deepseek-v4-pro",
+            "endpoints": ["chat.completions"],
+            "isActive": False,
+        },
+    )
+    assert second.status_code == 200
+    second_route_id = second.json()["id"]
+
+    activated = await async_client.put(
+        f"/api/settings/external-model-routing/routes/{second_route_id}",
+        json={"isActive": True, "deactivateConflicts": True},
+    )
+    assert activated.status_code == 200
+    assert activated.json()["isActive"] is True
+
+    admin = await async_client.get("/api/settings/external-model-routing")
+    assert admin.status_code == 200
+    routes = {route["id"]: route for route in admin.json()["routes"]}
+    assert routes[first_route_id]["isActive"] is False
+    assert routes[second_route_id]["isActive"] is True
+
+    third = await async_client.post(
+        "/api/settings/external-model-routing/routes",
+        json={
+            "name": "Minimax Backend",
+            "publicModel": "gpt-5.3-codex",
+            "providerId": "openrouter",
+            "targetModel": "minimax/minimax-m3",
+            "endpoints": ["backend.responses"],
+            "isActive": True,
+        },
+    )
+    assert third.status_code == 200
+    admin = await async_client.get("/api/settings/external-model-routing")
+    routes = {route["id"]: route for route in admin.json()["routes"]}
+    assert routes[second_route_id]["isActive"] is True
+    assert routes[third.json()["id"]]["isActive"] is True
 
 
 @pytest.mark.asyncio

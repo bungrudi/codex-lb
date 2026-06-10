@@ -382,7 +382,9 @@ class ExternalProvider(Base):
 class ExternalModelRoute(Base):
     __tablename__ = "external_model_routes"
 
-    public_model: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    public_model: Mapped[str] = mapped_column(String, nullable=False)
     provider_id: Mapped[str] = mapped_column(
         String,
         ForeignKey("external_providers.id", ondelete="CASCADE"),
@@ -411,7 +413,11 @@ class ExternalModelRoute(Base):
 
     provider: Mapped[ExternalProvider] = relationship("ExternalProvider", back_populates="routes")
 
-    __table_args__ = (Index("idx_external_model_routes_provider", "provider_id", "is_active"),)
+    __table_args__ = (
+        UniqueConstraint("public_model", "name", name="uq_external_model_routes_public_model_name"),
+        Index("idx_external_model_routes_public_model", "public_model", "is_active"),
+        Index("idx_external_model_routes_provider", "provider_id", "is_active"),
+    )
 
 
 class AccountLimitWarmup(Base):

@@ -140,10 +140,10 @@ export function SettingsPage() {
                 }
                 onDeleteProvider={(providerId) => deleteProviderMutation.mutateAsync(providerId)}
                 onCreateRoute={(payload) => createRouteMutation.mutateAsync(payload)}
-                onUpdateRoute={(publicModel, payload) =>
-                  updateRouteMutation.mutateAsync({ publicModel, payload })
+                onUpdateRoute={(routeId, payload) =>
+                  updateRouteMutation.mutateAsync({ routeId, payload })
                 }
-                onDeleteRoute={(publicModel) => deleteRouteMutation.mutateAsync(publicModel)}
+                onDeleteRoute={(routeId) => deleteRouteMutation.mutateAsync(routeId)}
               />
             ) : null}
             {upstreamProxyQuery.data ? (

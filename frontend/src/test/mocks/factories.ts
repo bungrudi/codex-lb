@@ -596,6 +596,8 @@ export function createExternalModelRoutingAdmin(
 		],
 		routes: [
 			{
+				id: "route_minimax_codex",
+				name: "Minimax Codex",
 				publicModel: "gpt-5.3-codex",
 				providerId: "openrouter",
 				targetModel: "minimax/minimax-m3",

@@ -38,19 +38,21 @@ Provider configuration MUST include a provider id, provider kind, base URL, API-
 
 ### Requirement: Dashboard settings manage external providers and model routes
 
-The dashboard SHALL expose external model routing management from the existing Settings area rather than a separate standalone GUI. Authenticated dashboard operators MUST be able to create, update, list, enable, disable, and delete OpenAI-compatible external provider records and exact public-model route records.
+The dashboard SHALL expose external model routing management from the existing Settings area rather than a separate standalone GUI. Authenticated dashboard operators MUST be able to create, update, list, enable, disable, and delete OpenAI-compatible external provider records and named exact public-model route profile records.
 
 Dashboard-managed provider API keys SHALL be stored encrypted with the existing application encryption-key mechanism. Admin API and dashboard responses MUST return only secret status metadata such as whether a key is configured; they MUST NOT return raw provider API keys. Updating a provider without an API-key field MUST preserve the existing encrypted key. An explicit key-clear action MUST remove the stored key.
 
-The runtime route resolver MUST include dashboard-managed providers and routes without requiring process restart. Dashboard-managed rows MUST take precedence over environment-provided external routing config for the same provider id or public model. Dashboard changes MUST invalidate any external routing cache so the next proxy request observes the new provider or route state.
+The runtime route resolver MUST include dashboard-managed providers and active route profiles without requiring process restart. Dashboard-managed provider rows MUST take precedence over environment-provided providers with the same provider id. Active dashboard-managed route profiles MUST take precedence over environment-provided routes for the same public model and endpoint. Dashboard changes MUST invalidate any external routing cache so the next proxy request observes the new provider or route state.
 
-Dashboard-managed routes MUST use the same validation and routing semantics as environment-configured routes: exact public model ids, explicit endpoint lists, supported provider references, HTTPS provider base URLs unless local insecure mode is explicitly enabled, fallback disabled unless implemented, public model policy enforcement, client-visible public model identity preservation, and deterministic unsupported-endpoint errors.
+Dashboard-managed route profiles MUST use the same validation and routing semantics as environment-configured routes: exact public model ids, explicit endpoint lists, supported provider references, HTTPS provider base URLs unless local insecure mode is explicitly enabled, fallback disabled unless implemented, public model policy enforcement, client-visible public model identity preservation, and deterministic unsupported-endpoint errors.
 
-#### Scenario: Operator creates a provider and route from Settings
+The dashboard MUST allow multiple saved route profiles for the same public model so operators can switch between provider targets without deleting configuration. More than one route profile MAY be active for the same public model only when their enabled endpoint sets are disjoint. Activating a route profile MUST deactivate any other active dashboard-managed route profile whose public model and endpoint set overlap with the activated profile, unless the request explicitly asks to leave conflicts unresolved and receives a validation error. The resolver MUST fail closed with a deterministic external-route conflict error if persisted configuration still contains multiple active dashboard-managed route profiles for the same public model and endpoint.
+
+#### Scenario: Operator creates a provider and route profile from Settings
 
 - **GIVEN** no process restart occurs after startup
 - **WHEN** an authenticated dashboard operator creates an enabled provider with an encrypted API key
-- **AND** creates an enabled route mapping public model `gpt-5.3-codex` to that provider target model `minimax/minimax-m3` for endpoint `backend.responses`
+- **AND** creates an active route profile mapping public model `gpt-5.3-codex` to that provider target model `minimax/minimax-m3` for endpoint `backend.responses`
 - **THEN** the next matching backend Codex Responses request routes to the configured provider target model
 - **AND** the client-visible response still uses public model `gpt-5.3-codex`
 
@@ -64,11 +66,28 @@ Dashboard-managed routes MUST use the same validation and routing semantics as e
 
 #### Scenario: Dashboard config takes precedence over environment config
 
-- **GIVEN** environment config maps public model `gpt-5.3-codex` to one provider target
-- **AND** dashboard config maps public model `gpt-5.3-codex` to a different enabled provider target
+- **GIVEN** environment config maps public model `gpt-5.3-codex` to one provider target for endpoint `chat.completions`
+- **AND** dashboard config has an active route profile for public model `gpt-5.3-codex` to a different provider target for endpoint `chat.completions`
 - **WHEN** a client sends a matching proxy request
-- **THEN** the dashboard-managed route is selected
-- **AND** the environment route for the same public model is not used
+- **THEN** the dashboard-managed route profile is selected
+- **AND** the environment route for the same public model and endpoint is not used
+
+#### Scenario: Activating one profile deactivates overlapping profiles only
+
+- **GIVEN** public model `gpt-5.3-codex` has an active `Minimax` route profile for endpoint `backend.responses`
+- **AND** it has an inactive `DeepSeek V4 Pro` route profile for endpoint `backend.responses`
+- **WHEN** an operator activates the `DeepSeek V4 Pro` route profile with conflict deactivation enabled
+- **THEN** the `DeepSeek V4 Pro` profile becomes active
+- **AND** the `Minimax` profile becomes inactive
+- **AND** active route profiles for other public models remain active
+- **AND** active route profiles for `gpt-5.3-codex` with disjoint endpoints remain active
+
+#### Scenario: Persisted active conflict fails closed
+
+- **GIVEN** persisted dashboard configuration contains two active route profiles for `gpt-5.3-codex` and endpoint `responses`
+- **WHEN** a client sends a matching Responses request
+- **THEN** the system returns an OpenAI-format error with code `external_route_conflict`
+- **AND** the request is not sent to any external provider or ChatGPT account pool
 
 #### Scenario: Dashboard-admin endpoints require dashboard authentication
 
