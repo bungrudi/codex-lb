@@ -414,7 +414,6 @@ class ExternalModelRoute(Base):
     provider: Mapped[ExternalProvider] = relationship("ExternalProvider", back_populates="routes")
 
     __table_args__ = (
-        UniqueConstraint("public_model", "name", name="uq_external_model_routes_public_model_name"),
         Index("idx_external_model_routes_public_model", "public_model", "is_active"),
         Index("idx_external_model_routes_provider", "provider_id", "is_active"),
     )

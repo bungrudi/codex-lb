@@ -137,6 +137,37 @@ async def test_dashboard_managed_route_drives_proxy_without_restart(async_client
 
 
 @pytest.mark.asyncio
+async def test_duplicate_route_profile_names_are_allowed(async_client):
+    first_route_id = await _create_dashboard_provider_and_route(async_client)
+    disabled = await async_client.put(
+        f"/api/settings/external-model-routing/routes/{first_route_id}",
+        json={"isActive": False},
+    )
+    assert disabled.status_code == 200
+
+    duplicate = await async_client.post(
+        "/api/settings/external-model-routing/routes",
+        json={
+            "name": "Minimax Codex",
+            "publicModel": "gpt-5.3-codex",
+            "providerId": "openrouter",
+            "targetModel": "deepseek/deepseek-v4-pro",
+            "endpoints": ["chat.completions", "responses", "backend.responses"],
+            "isActive": True,
+        },
+    )
+
+    assert duplicate.status_code == 200
+    assert duplicate.json()["name"] == "Minimax Codex"
+    assert duplicate.json()["targetModel"] == "deepseek/deepseek-v4-pro"
+
+    admin = await async_client.get("/api/settings/external-model-routing")
+    assert admin.status_code == 200
+    matching = [route for route in admin.json()["routes"] if route["name"] == "Minimax Codex"]
+    assert len(matching) == 2
+
+
+@pytest.mark.asyncio
 async def test_activating_route_profile_deactivates_conflicting_profile(async_client):
     first_route_id = await _create_dashboard_provider_and_route(async_client)
     second = await async_client.post(

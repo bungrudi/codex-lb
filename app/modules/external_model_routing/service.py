@@ -151,7 +151,6 @@ class ExternalModelRoutingService:
 
     async def create_route(self, payload: ExternalModelRouteCreateRequest) -> ExternalModelRouteResponse:
         await self._require_provider(payload.provider_id)
-        await self._validate_unique_route_name(payload.public_model, payload.name, exclude_route_id=None)
         route_config = self._validate_route_payload(
             public_model=payload.public_model,
             provider_id=payload.provider_id,
@@ -207,7 +206,6 @@ class ExternalModelRoutingService:
     ) -> ExternalModelRouteResponse:
         row = await self._require_route(route_id)
         next_name = payload.name.strip() if payload.name is not None else row.name
-        await self._validate_unique_route_name(row.public_model, next_name, exclude_route_id=row.id)
         next_provider_id = payload.provider_id if payload.provider_id is not None else row.provider_id
         await self._require_provider(next_provider_id)
         next_target_model = payload.target_model if payload.target_model is not None else row.target_model
@@ -293,23 +291,6 @@ class ExternalModelRoutingService:
         if row is None:
             raise DashboardNotFoundError("External model route not found", code="external_model_route_not_found")
         return row
-
-    async def _validate_unique_route_name(
-        self,
-        public_model: str,
-        name: str,
-        *,
-        exclude_route_id: str | None,
-    ) -> None:
-        normalized_name = name.strip()
-        for route in await self._repository.list_routes():
-            if route.public_model != public_model.strip() or route.id == exclude_route_id:
-                continue
-            if route.name == normalized_name:
-                raise DashboardConflictError(
-                    "External model route profile already exists for this public model",
-                    code="external_model_route_exists",
-                )
 
     async def _deactivate_conflicting_routes(
         self,

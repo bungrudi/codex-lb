@@ -562,6 +562,68 @@ def test_external_model_route_profiles_migration_preserves_existing_route(tmp_pa
         assert "idx_external_model_routes_public_model" in index_names
 
 
+def test_external_model_route_profile_names_are_not_unique(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-profile-names.db"
+    url = _db_url(db_path)
+    pre_revision = "20260610_010000_add_external_model_route_profiles"
+    target_revision = "20260610_020000_allow_duplicate_external_route_profile_names"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_providers (id, base_url, api_key_env)
+                VALUES ('openrouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    id, name, public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'route_1', 'Minimax Codex', 'gpt-5.3-codex', 'openrouter',
+                    'minimax/minimax-m3', '["chat.completions"]'
+                )
+                """
+            )
+        )
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).begin() as connection:
+        constraints = inspect(connection).get_unique_constraints("external_model_routes")
+        assert "uq_external_model_routes_public_model_name" not in {
+            constraint.get("name") for constraint in constraints
+        }
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    id, name, public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'route_2', 'Minimax Codex', 'gpt-5.3-codex', 'openrouter',
+                    'deepseek/deepseek-v4-pro', '["responses"]'
+                )
+                """
+            )
+        )
+        route_count = connection.execute(
+            text(
+                """
+                SELECT COUNT(*) FROM external_model_routes
+                WHERE public_model = 'gpt-5.3-codex' AND name = 'Minimax Codex'
+                """
+            )
+        ).scalar_one()
+        assert route_count == 2
+
+
 def test_quota_planner_migration_repairs_preexisting_request_kind_column(tmp_path: Path) -> None:
     db_path = tmp_path / "quota-planner-request-kind-drift.db"
     url = _db_url(db_path)

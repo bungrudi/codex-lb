@@ -46,7 +46,7 @@ The runtime route resolver MUST include dashboard-managed providers and active r
 
 Dashboard-managed route profiles MUST use the same validation and routing semantics as environment-configured routes: exact public model ids, explicit endpoint lists, supported provider references, HTTPS provider base URLs unless local insecure mode is explicitly enabled, fallback disabled unless implemented, public model policy enforcement, client-visible public model identity preservation, and deterministic unsupported-endpoint errors.
 
-The dashboard MUST allow multiple saved route profiles for the same public model so operators can switch between provider targets without deleting configuration. More than one route profile MAY be active for the same public model only when their enabled endpoint sets are disjoint. Activating a route profile MUST deactivate any other active dashboard-managed route profile whose public model and endpoint set overlap with the activated profile, unless the request explicitly asks to leave conflicts unresolved and receives a validation error. The resolver MUST fail closed with a deterministic external-route conflict error if persisted configuration still contains multiple active dashboard-managed route profiles for the same public model and endpoint.
+The dashboard MUST allow multiple saved route profiles for the same public model so operators can switch between provider targets without deleting configuration. Route profile identity MUST be an opaque route id rather than the public model id or display name; duplicate display names MUST NOT prevent saving another route profile. More than one route profile MAY be active for the same public model only when their enabled endpoint sets are disjoint. Activating a route profile MUST deactivate any other active dashboard-managed route profile whose public model and endpoint set overlap with the activated profile, unless the request explicitly asks to leave conflicts unresolved and receives a validation error. The resolver MUST fail closed with a deterministic external-route conflict error if persisted configuration still contains multiple active dashboard-managed route profiles for the same public model and endpoint.
 
 #### Scenario: Operator creates a provider and route profile from Settings
 
@@ -71,6 +71,13 @@ The dashboard MUST allow multiple saved route profiles for the same public model
 - **WHEN** a client sends a matching proxy request
 - **THEN** the dashboard-managed route profile is selected
 - **AND** the environment route for the same public model and endpoint is not used
+
+#### Scenario: Duplicate disabled profile name does not block creation
+
+- **GIVEN** public model `gpt-5.3-codex` has a disabled route profile named `Minimax Codex`
+- **WHEN** an operator creates another route profile for `gpt-5.3-codex` also named `Minimax Codex` with a different target model
+- **THEN** the system creates the new route profile
+- **AND** route profile identity remains based on the route profile id
 
 #### Scenario: Activating one profile deactivates overlapping profiles only
 
