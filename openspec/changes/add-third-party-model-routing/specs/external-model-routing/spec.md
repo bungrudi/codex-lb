@@ -108,3 +108,26 @@ When a matching external route fails, fallback to the ChatGPT account pool MUST 
 - **WHEN** the provider returns a retryable 5xx error
 - **THEN** the system returns an OpenAI-compatible provider failure to the client
 - **AND** the system does not retry the request through the ChatGPT account pool
+
+### Requirement: External backend Responses routes bridge Codex Computer Use MCP tools
+
+When an enabled external route handles a backend Codex Responses request whose payload includes Codex Computer Use plugin context, the system SHALL bridge the Computer Use MCP tool namespace to OpenAI-compatible function tools for the provider request. The bridge MUST expose provider-visible function tool definitions for the Computer Use MCP tools and MUST NOT expose provider ids, provider target model ids, or provider credentials to the client.
+
+For bridged provider responses, the system MUST rewrite provider-visible Computer Use function calls back to Codex's client-visible MCP namespace shape before forwarding the response to the client. The system MUST preserve call ids and arguments so the Codex client can execute the MCP tool and return the corresponding tool output. The bridge MUST rewrite prior client-visible Computer Use MCP function-call items back to the provider-visible function names on subsequent provider requests so provider tool-call continuity is preserved.
+
+#### Scenario: Minimax-compatible Computer Use tool call is forwarded as Codex MCP namespace
+
+- **GIVEN** public model `gpt-5.3-codex` routes backend Codex Responses requests to an OpenAI-compatible provider
+- **AND** a backend Codex Responses request includes Computer Use plugin context
+- **WHEN** the provider emits a function call for a bridged Computer Use function tool
+- **THEN** the client-visible response item uses `namespace = "mcp__computer_use"`
+- **AND** the client-visible response item uses the original Computer Use MCP tool name
+- **AND** the provider-visible synthetic function-tool name is not forwarded to the client
+
+#### Scenario: Bridged provider request includes Computer Use function tools
+
+- **GIVEN** public model `gpt-5.3-codex` routes backend Codex Responses requests to an OpenAI-compatible provider
+- **AND** a backend Codex Responses request includes Computer Use plugin context
+- **WHEN** the system opens the provider request
+- **THEN** the provider payload includes OpenAI-compatible function tool definitions for Computer Use MCP tools
+- **AND** the provider payload includes compatibility instructions that tell the provider to use those functions instead of `resources/list` for Computer Use

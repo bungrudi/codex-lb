@@ -48,7 +48,30 @@ from app.core.errors import (
     response_failed_event,
 )
 from app.core.exceptions import ProxyAuthError, ProxyRateLimitError
-from app.core.metrics.prometheus import PROMETHEUS_AVAILABLE, bridge_public_contract_error_total
+from app.core.external_providers.config import ExternalModelRouteConfig, ExternalProviderConfig
+from app.core.external_providers.mcp_bridge import (
+    bridge_computer_use_mcp_provider_request,
+    rewrite_computer_use_mcp_response_payload,
+    rewrite_computer_use_mcp_response_sse,
+    should_bridge_computer_use_mcp,
+)
+from app.core.external_providers.openai_compatible import ExternalProviderError, OpenAICompatibleProviderClient
+from app.core.external_providers.resolver import (
+    ExternalRouteResolution,
+    ExternalRouteResolutionStatus,
+    resolve_external_model_route,
+)
+from app.core.external_providers.response_rewrite import rewrite_public_model_in_payload, rewrite_public_model_in_sse
+from app.core.external_providers.usage import ExternalProviderUsage, extract_external_provider_usage
+from app.core.metrics.prometheus import (
+    PROMETHEUS_AVAILABLE,
+    bridge_public_contract_error_total,
+    external_provider_errors_total,
+    external_provider_fallback_total,
+    external_provider_latency_seconds,
+    external_provider_requests_total,
+    external_provider_tokens_total,
+)
 from app.core.middleware.api_firewall import _parse_trusted_proxy_networks, resolve_connection_client_ip
 from app.core.openai.chat_requests import ChatCompletionsRequest
 from app.core.openai.chat_responses import (
@@ -71,7 +94,7 @@ from app.core.openai.models import (
     OpenAIErrorEnvelope as OpenAIErrorEnvelopeModel,
 )
 from app.core.openai.parsing import parse_response_payload
-from app.core.openai.requests import ResponsesCompactRequest, ResponsesRequest
+from app.core.openai.requests import ResponsesCompactRequest, ResponsesRequest, normalize_reasoning_aliases
 from app.core.openai.v1_requests import V1ResponsesCompactRequest, V1ResponsesRequest
 from app.core.resilience.overload import is_local_overload_error_code, merge_retry_after_headers
 from app.core.runtime_logging import log_error_response
@@ -104,6 +127,7 @@ from app.modules.firewall.service import FirewallRepositoryPort, FirewallService
 from app.modules.proxy import affinity as proxy_affinity_module
 from app.modules.proxy import images_service as images_service_module
 from app.modules.proxy import service as proxy_service_module
+from app.modules.proxy._service.support import _request_log_useragent_fields
 from app.modules.proxy.api_key_usage import estimate_api_key_request_usage
 from app.modules.proxy.helpers import _rate_limit_details
 from app.modules.proxy.http_bridge_forwarding import parse_forwarded_request
@@ -252,6 +276,19 @@ _IMAGE_ERROR_CODE_STATUS: Final[dict[str, int]] = {
     "insufficient_quota": 429,
 }
 _WARMUP_MODES: Final[frozenset[str]] = frozenset({"normal", "strict", "force"})
+_EXTERNAL_PROVIDER_METRIC_ERROR_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "invalid_api_key",
+        "insufficient_permissions",
+        "not_found",
+        "rate_limit_exceeded",
+        "upstream_unavailable",
+        "invalid_request_error",
+        "external_provider_unavailable",
+        "external_provider_invalid_response",
+        "stream_event_too_large",
+    }
+)
 
 
 def _accepts_event_stream(request: Request) -> bool:
@@ -501,6 +538,7 @@ async def responses(
         # native event ordering, while OpenAI SDK clients pointed at this
         # compatibility route need the same SSE contract enforcement as /v1.
         enforce_openai_sdk_contract=openai_sdk_request,
+        external_route_endpoint="backend.responses",
     )
 
 
@@ -647,6 +685,7 @@ async def internal_bridge_responses(
         # before the origin ever sees the stream. Forward verbatim and let
         # the origin run its own normalization.
         enforce_openai_sdk_contract=False,
+        external_route_endpoint=None,
     )
 
 
@@ -1926,6 +1965,241 @@ def _to_model_metadata(model: UpstreamModel) -> ModelMetadata:
     )
 
 
+async def _handle_external_chat_completions(
+    request: Request,
+    payload: ChatCompletionsRequest,
+    responses_payload: ResponsesRequest,
+    context: ProxyContext,
+    api_key: ApiKeyData | None,
+    resolution: ExternalRouteResolution,
+    *,
+    rate_limit_headers: Mapping[str, str],
+) -> Response:
+    if not resolution.matched or resolution.route is None or resolution.provider is None:
+        return _external_route_public_error(request, resolution, headers=rate_limit_headers)
+
+    route = resolution.route
+    provider = resolution.provider
+    logger.info(
+        "external_route_resolved request_id=%s endpoint=%s public_model=%s provider_id=%s target_model=%s",
+        get_request_id(),
+        "chat.completions",
+        route.public_model,
+        route.provider_id,
+        route.target_model,
+    )
+    try:
+        client = _external_provider_client(provider)
+    except ExternalProviderError as exc:
+        return _external_provider_error_response(request, exc, headers=rate_limit_headers)
+    reservation = await _enforce_request_limits(
+        api_key,
+        request_model=route.public_model,
+        request_service_tier=responses_payload.service_tier,
+        request_usage_budget=estimate_api_key_request_usage(responses_payload),
+    )
+    provider_payload = _external_chat_provider_payload(payload, responses_payload, route)
+    useragent, useragent_group = _request_log_useragent_fields(request.headers)
+    request_id = get_request_id()
+    start = time.monotonic()
+
+    if payload.stream:
+        usage_ref: dict[str, ExternalProviderUsage | None] = {"usage": None}
+        stream = client.stream_sse(
+            "/chat/completions",
+            provider_payload,
+            request.headers,
+            max_event_bytes=get_settings().max_sse_event_bytes,
+        )
+        rewritten_stream = _rewrite_external_provider_stream(stream, route=route, usage_ref=usage_ref)
+        rewritten_stream, startup_error = await _probe_external_provider_stream_startup(
+            rewritten_stream,
+            timeout_seconds=_CHAT_COMPLETIONS_STARTUP_ERROR_PROBE_SECONDS,
+        )
+        if startup_error is not None:
+            await _settle_external_provider_reservation(
+                reservation,
+                model=route.public_model,
+                usage=None,
+                service_tier=responses_payload.service_tier,
+            )
+            _record_external_provider_metrics(
+                route,
+                "chat.completions",
+                status="error",
+                latency_seconds=time.monotonic() - start,
+                error_code=startup_error.upstream_error_code,
+            )
+            await context.service._write_request_log(
+                account_id=None,
+                api_key=api_key,
+                request_id=request_id,
+                model=route.public_model,
+                latency_ms=int((time.monotonic() - start) * 1000),
+                status="error",
+                error_code=startup_error.upstream_error_code,
+                error_message=str(startup_error),
+                transport="http",
+                service_tier=responses_payload.service_tier,
+                requested_service_tier=responses_payload.service_tier,
+                useragent=useragent,
+                useragent_group=useragent_group,
+                external_provider_id=route.provider_id,
+                external_provider_model=route.target_model,
+                external_route_public_model=route.public_model,
+                external_route_endpoint="chat.completions",
+                external_fallback_used=False,
+                external_fallback_reason=None,
+            )
+            return _external_provider_error_response(request, startup_error, headers=rate_limit_headers)
+
+        async def _settled_stream() -> AsyncIterator[str]:
+            status = "success"
+            error_code: str | None = None
+            error_message: str | None = None
+            try:
+                async for chunk in rewritten_stream:
+                    yield chunk
+            except ExternalProviderError as exc:
+                status = "error"
+                error_code = exc.upstream_error_code
+                error_message = str(exc)
+                raise
+            finally:
+                stream_usage = usage_ref["usage"] if status == "success" else None
+                await _settle_external_provider_reservation(
+                    reservation,
+                    model=route.public_model,
+                    usage=stream_usage,
+                    service_tier=responses_payload.service_tier,
+                )
+                _record_external_provider_metrics(
+                    route,
+                    "chat.completions",
+                    status=status,
+                    latency_seconds=time.monotonic() - start,
+                    usage=stream_usage,
+                    error_code=error_code,
+                )
+                await context.service._write_request_log(
+                    account_id=None,
+                    api_key=api_key,
+                    request_id=request_id,
+                    model=route.public_model,
+                    latency_ms=int((time.monotonic() - start) * 1000),
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    input_tokens=usage_ref["usage"].input_tokens if usage_ref["usage"] else None,
+                    output_tokens=usage_ref["usage"].output_tokens if usage_ref["usage"] else None,
+                    cached_input_tokens=usage_ref["usage"].cached_input_tokens if usage_ref["usage"] else None,
+                    reasoning_tokens=usage_ref["usage"].reasoning_tokens if usage_ref["usage"] else None,
+                    transport="http",
+                    service_tier=responses_payload.service_tier,
+                    requested_service_tier=responses_payload.service_tier,
+                    useragent=useragent,
+                    useragent_group=useragent_group,
+                    external_provider_id=route.provider_id,
+                    external_provider_model=route.target_model,
+                    external_route_public_model=route.public_model,
+                    external_route_endpoint="chat.completions",
+                    external_fallback_used=False,
+                    external_fallback_reason=None,
+                )
+
+        return StreamingResponse(
+            inject_sse_keepalives(
+                _settled_stream(),
+                get_settings().sse_keepalive_interval_seconds,
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", **rate_limit_headers},
+        )
+
+    try:
+        provider_response = await client.post_json("/chat/completions", provider_payload, request.headers)
+    except ExternalProviderError as exc:
+        await _settle_external_provider_reservation(
+            reservation,
+            model=route.public_model,
+            usage=None,
+            service_tier=responses_payload.service_tier,
+        )
+        _record_external_provider_metrics(
+            route,
+            "chat.completions",
+            status="error",
+            latency_seconds=time.monotonic() - start,
+            error_code=exc.upstream_error_code,
+        )
+        await context.service._write_request_log(
+            account_id=None,
+            api_key=api_key,
+            request_id=request_id,
+            model=route.public_model,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status="error",
+            error_code=exc.upstream_error_code,
+            error_message=str(exc),
+            transport="http",
+            service_tier=responses_payload.service_tier,
+            requested_service_tier=responses_payload.service_tier,
+            useragent=useragent,
+            useragent_group=useragent_group,
+            external_provider_id=route.provider_id,
+            external_provider_model=route.target_model,
+            external_route_public_model=route.public_model,
+            external_route_endpoint="chat.completions",
+            external_fallback_used=False,
+            external_fallback_reason=None,
+        )
+        return _external_provider_error_response(request, exc, headers=rate_limit_headers)
+
+    rewritten = rewrite_public_model_in_payload(
+        provider_response,
+        target_model=route.target_model,
+        public_model=route.public_model,
+    )
+    usage = extract_external_provider_usage(rewritten)
+    await _settle_external_provider_reservation(
+        reservation,
+        model=route.public_model,
+        usage=usage,
+        service_tier=responses_payload.service_tier,
+    )
+    _record_external_provider_metrics(
+        route,
+        "chat.completions",
+        status="success",
+        latency_seconds=time.monotonic() - start,
+        usage=usage,
+    )
+    await context.service._write_request_log(
+        account_id=None,
+        api_key=api_key,
+        request_id=request_id,
+        model=route.public_model,
+        latency_ms=int((time.monotonic() - start) * 1000),
+        status="success",
+        input_tokens=usage.input_tokens if usage else None,
+        output_tokens=usage.output_tokens if usage else None,
+        cached_input_tokens=usage.cached_input_tokens if usage else None,
+        reasoning_tokens=usage.reasoning_tokens if usage else None,
+        transport="http",
+        service_tier=responses_payload.service_tier,
+        requested_service_tier=responses_payload.service_tier,
+        useragent=useragent,
+        useragent_group=useragent_group,
+        external_provider_id=route.provider_id,
+        external_provider_model=route.target_model,
+        external_route_public_model=route.public_model,
+        external_route_endpoint="chat.completions",
+        external_fallback_used=False,
+        external_fallback_reason=None,
+    )
+    return JSONResponse(content=rewritten, status_code=200, headers=rate_limit_headers)
+
+
 @v1_router.post(
     "/chat/completions",
     response_model=ChatCompletionResult,
@@ -1977,6 +2251,17 @@ async def v1_chat_completions(
         error = openai_validation_error(exc)
         return _logged_error_json_response(request, 400, error, headers=rate_limit_headers)
     apply_api_key_enforcement(responses_payload, api_key)
+    external_resolution = resolve_external_model_route(responses_payload.model, "chat.completions")
+    if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
+        return await _handle_external_chat_completions(
+            request,
+            payload,
+            responses_payload,
+            context,
+            api_key,
+            external_resolution,
+            rate_limit_headers=rate_limit_headers,
+        )
     admission_denial = await _opportunistic_admission_denial(request, context, api_key, model=responses_payload.model)
     if admission_denial is not None:
         return admission_denial
@@ -2063,6 +2348,265 @@ async def v1_chat_completions(
     )
 
 
+async def _handle_external_responses(
+    request: Request,
+    payload: ResponsesRequest,
+    context: ProxyContext,
+    api_key: ApiKeyData | None,
+    resolution: ExternalRouteResolution,
+    *,
+    stream_response: bool,
+    endpoint_name: str = "responses",
+    rate_limit_headers: Mapping[str, str] | None = None,
+    enforce_openai_sdk_contract: bool = True,
+) -> Response:
+    if rate_limit_headers is None:
+        rate_limit_headers = await context.service.rate_limit_headers()
+    if not resolution.matched or resolution.route is None or resolution.provider is None:
+        return _external_route_public_error(request, resolution, headers=rate_limit_headers)
+
+    route = resolution.route
+    provider = resolution.provider
+    logger.info(
+        "external_route_resolved request_id=%s endpoint=%s public_model=%s provider_id=%s target_model=%s",
+        get_request_id(),
+        endpoint_name,
+        route.public_model,
+        route.provider_id,
+        route.target_model,
+    )
+    try:
+        client = _external_provider_client(provider)
+    except ExternalProviderError as exc:
+        return _external_provider_error_response(request, exc, headers=rate_limit_headers)
+    reservation = await _enforce_request_limits(
+        api_key,
+        request_model=route.public_model,
+        request_service_tier=payload.service_tier,
+        request_usage_budget=estimate_api_key_request_usage(payload),
+    )
+    useragent, useragent_group = _request_log_useragent_fields(request.headers)
+    request_id = get_request_id()
+    start = time.monotonic()
+
+    if stream_response:
+        payload.stream = True
+        provider_payload = _external_responses_provider_payload(payload, route)
+        computer_use_mcp_bridge = should_bridge_computer_use_mcp(provider_payload)
+        if computer_use_mcp_bridge:
+            provider_payload = bridge_computer_use_mcp_provider_request(provider_payload)
+        usage_ref: dict[str, ExternalProviderUsage | None] = {"usage": None}
+        stream = client.stream_sse(
+            "/responses",
+            provider_payload,
+            request.headers,
+            max_event_bytes=get_settings().max_sse_event_bytes,
+        )
+        rewritten_stream = _rewrite_external_provider_stream(
+            stream,
+            route=route,
+            usage_ref=usage_ref,
+            computer_use_mcp_bridge=computer_use_mcp_bridge,
+        )
+        rewritten_stream, startup_error = await _probe_external_provider_stream_startup(
+            rewritten_stream,
+            timeout_seconds=_STREAM_STARTUP_ERROR_PROBE_SECONDS,
+        )
+        if startup_error is not None:
+            await _settle_external_provider_reservation(
+                reservation,
+                model=route.public_model,
+                usage=None,
+                service_tier=payload.service_tier,
+            )
+            _record_external_provider_metrics(
+                route,
+                endpoint_name,
+                status="error",
+                latency_seconds=time.monotonic() - start,
+                error_code=startup_error.upstream_error_code,
+            )
+            await context.service._write_request_log(
+                account_id=None,
+                api_key=api_key,
+                request_id=request_id,
+                model=route.public_model,
+                latency_ms=int((time.monotonic() - start) * 1000),
+                status="error",
+                error_code=startup_error.upstream_error_code,
+                error_message=str(startup_error),
+                transport="http",
+                service_tier=payload.service_tier,
+                requested_service_tier=payload.service_tier,
+                useragent=useragent,
+                useragent_group=useragent_group,
+                external_provider_id=route.provider_id,
+                external_provider_model=route.target_model,
+                external_route_public_model=route.public_model,
+                external_route_endpoint=endpoint_name,
+                external_fallback_used=False,
+                external_fallback_reason=None,
+            )
+            return _external_provider_error_response(request, startup_error, headers=rate_limit_headers)
+
+        async def _settled_stream() -> AsyncIterator[str]:
+            status = "success"
+            error_code: str | None = None
+            error_message: str | None = None
+            try:
+                async for chunk in _normalize_public_responses_stream(
+                    _stream_proxy_errors_as_response_failed(rewritten_stream),
+                    enforce_openai_sdk_contract=enforce_openai_sdk_contract,
+                ):
+                    yield chunk
+            except ExternalProviderError as exc:
+                status = "error"
+                error_code = exc.upstream_error_code
+                error_message = str(exc)
+                raise
+            finally:
+                usage = usage_ref["usage"]
+                stream_usage = usage if status == "success" else None
+                await _settle_external_provider_reservation(
+                    reservation,
+                    model=route.public_model,
+                    usage=stream_usage,
+                    service_tier=payload.service_tier,
+                )
+                _record_external_provider_metrics(
+                    route,
+                    endpoint_name,
+                    status=status,
+                    latency_seconds=time.monotonic() - start,
+                    usage=stream_usage,
+                    error_code=error_code,
+                )
+                await context.service._write_request_log(
+                    account_id=None,
+                    api_key=api_key,
+                    request_id=request_id,
+                    model=route.public_model,
+                    latency_ms=int((time.monotonic() - start) * 1000),
+                    status=status,
+                    error_code=error_code,
+                    error_message=error_message,
+                    input_tokens=usage.input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
+                    cached_input_tokens=usage.cached_input_tokens if usage else None,
+                    reasoning_tokens=usage.reasoning_tokens if usage else None,
+                    transport="http",
+                    service_tier=payload.service_tier,
+                    requested_service_tier=payload.service_tier,
+                    useragent=useragent,
+                    useragent_group=useragent_group,
+                    external_provider_id=route.provider_id,
+                    external_provider_model=route.target_model,
+                    external_route_public_model=route.public_model,
+                    external_route_endpoint=endpoint_name,
+                    external_fallback_used=False,
+                    external_fallback_reason=None,
+                )
+
+        return StreamingResponse(
+            inject_sse_keepalives(
+                _settled_stream(),
+                get_settings().sse_keepalive_interval_seconds,
+            ),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache, no-transform", **rate_limit_headers},
+        )
+
+    payload.stream = False
+    provider_payload = _external_responses_provider_payload(payload, route)
+    computer_use_mcp_bridge = should_bridge_computer_use_mcp(provider_payload)
+    if computer_use_mcp_bridge:
+        provider_payload = bridge_computer_use_mcp_provider_request(provider_payload)
+    try:
+        provider_response = await client.post_json("/responses", provider_payload, request.headers)
+    except ExternalProviderError as exc:
+        await _settle_external_provider_reservation(
+            reservation,
+            model=route.public_model,
+            usage=None,
+            service_tier=payload.service_tier,
+        )
+        _record_external_provider_metrics(
+            route,
+            endpoint_name,
+            status="error",
+            latency_seconds=time.monotonic() - start,
+            error_code=exc.upstream_error_code,
+        )
+        await context.service._write_request_log(
+            account_id=None,
+            api_key=api_key,
+            request_id=request_id,
+            model=route.public_model,
+            latency_ms=int((time.monotonic() - start) * 1000),
+            status="error",
+            error_code=exc.upstream_error_code,
+            error_message=str(exc),
+            transport="http",
+            service_tier=payload.service_tier,
+            requested_service_tier=payload.service_tier,
+            useragent=useragent,
+            useragent_group=useragent_group,
+            external_provider_id=route.provider_id,
+            external_provider_model=route.target_model,
+            external_route_public_model=route.public_model,
+            external_route_endpoint=endpoint_name,
+            external_fallback_used=False,
+            external_fallback_reason=None,
+        )
+        return _external_provider_error_response(request, exc, headers=rate_limit_headers)
+
+    rewritten = rewrite_public_model_in_payload(
+        provider_response,
+        target_model=route.target_model,
+        public_model=route.public_model,
+    )
+    if computer_use_mcp_bridge:
+        rewritten = rewrite_computer_use_mcp_response_payload(rewritten)
+    usage = extract_external_provider_usage(rewritten)
+    await _settle_external_provider_reservation(
+        reservation,
+        model=route.public_model,
+        usage=usage,
+        service_tier=payload.service_tier,
+    )
+    _record_external_provider_metrics(
+        route,
+        endpoint_name,
+        status="success",
+        latency_seconds=time.monotonic() - start,
+        usage=usage,
+    )
+    await context.service._write_request_log(
+        account_id=None,
+        api_key=api_key,
+        request_id=request_id,
+        model=route.public_model,
+        latency_ms=int((time.monotonic() - start) * 1000),
+        status="success",
+        input_tokens=usage.input_tokens if usage else None,
+        output_tokens=usage.output_tokens if usage else None,
+        cached_input_tokens=usage.cached_input_tokens if usage else None,
+        reasoning_tokens=usage.reasoning_tokens if usage else None,
+        transport="http",
+        service_tier=payload.service_tier,
+        requested_service_tier=payload.service_tier,
+        useragent=useragent,
+        useragent_group=useragent_group,
+        external_provider_id=route.provider_id,
+        external_provider_model=route.target_model,
+        external_route_public_model=route.public_model,
+        external_route_endpoint=endpoint_name,
+        external_fallback_used=False,
+        external_fallback_reason=None,
+    )
+    return JSONResponse(content=rewritten, status_code=200, headers=rate_limit_headers)
+
+
 async def _stream_responses(
     request: Request,
     payload: ResponsesRequest,
@@ -2082,9 +2626,25 @@ async def _stream_responses(
     forwarded_affinity_kind: str | None = None,
     forwarded_affinity_key: str | None = None,
     enforce_openai_sdk_contract: bool = True,
+    external_route_endpoint: str | None = "responses",
 ) -> Response:
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
+    rate_limit_headers = await context.service.rate_limit_headers() if include_rate_limit_headers else {}
+    if external_route_endpoint is not None:
+        external_resolution = resolve_external_model_route(payload.model, external_route_endpoint)
+        if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
+            return await _handle_external_responses(
+                request,
+                payload,
+                context,
+                api_key,
+                external_resolution,
+                stream_response=True,
+                endpoint_name=external_route_endpoint,
+                rate_limit_headers=rate_limit_headers,
+                enforce_openai_sdk_contract=enforce_openai_sdk_contract,
+            )
     admission_denial = await _opportunistic_admission_denial(request, context, api_key, model=payload.model)
     if admission_denial is not None:
         return admission_denial
@@ -2100,7 +2660,6 @@ async def _stream_responses(
         )
     )
 
-    rate_limit_headers = await context.service.rate_limit_headers() if include_rate_limit_headers else {}
     bridge_active = prefer_http_bridge and proxy_service_module.get_settings().http_responses_session_bridge_enabled
     effective_headers = forwarded_headers or request.headers
     downstream_turn_state = (
@@ -2206,6 +2765,18 @@ async def _collect_responses(
 ) -> Response:
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
+    rate_limit_headers = await context.service.rate_limit_headers()
+    external_resolution = resolve_external_model_route(payload.model, "responses")
+    if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
+        return await _handle_external_responses(
+            request,
+            payload,
+            context,
+            api_key,
+            external_resolution,
+            stream_response=False,
+            rate_limit_headers=rate_limit_headers,
+        )
     admission_denial = await _opportunistic_admission_denial(request, context, api_key, model=payload.model)
     if admission_denial is not None:
         return admission_denial
@@ -2216,7 +2787,6 @@ async def _collect_responses(
         request_usage_budget=estimate_api_key_request_usage(payload),
     )
 
-    rate_limit_headers = await context.service.rate_limit_headers()
     bridge_active = prefer_http_bridge and proxy_service_module.get_settings().http_responses_session_bridge_enabled
     downstream_turn_state = (
         proxy_affinity_module.ensure_http_downstream_turn_state(request.headers) if bridge_active else None
@@ -2332,6 +2902,16 @@ async def _compact_responses(
 ) -> JSONResponse:
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
+    rate_limit_headers = await context.service.rate_limit_headers()
+    external_resolution = resolve_external_model_route(payload.model, "responses.compact")
+    if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
+        unsupported_resolution = ExternalRouteResolution(
+            ExternalRouteResolutionStatus.ENDPOINT_UNSUPPORTED,
+            route=external_resolution.route,
+            provider=external_resolution.provider,
+            reason="External model routing for responses/compact is not implemented",
+        )
+        return _external_route_public_error(request, unsupported_resolution, headers=rate_limit_headers)
     admission_denial = await _opportunistic_admission_denial(
         request,
         context,
@@ -2348,7 +2928,6 @@ async def _compact_responses(
         request_usage_budget=estimate_api_key_request_usage(payload),
     )
 
-    rate_limit_headers = await context.service.rate_limit_headers()
     try:
         result = await context.service.compact_responses(
             payload,
@@ -3110,6 +3689,38 @@ async def _release_reservation(reservation: ApiKeyUsageReservationData | None) -
         await service.release_usage_reservation(reservation.reservation_id)
 
 
+async def _settle_external_provider_reservation(
+    reservation: ApiKeyUsageReservationData | None,
+    *,
+    model: str,
+    usage: ExternalProviderUsage | None,
+    service_tier: str | None,
+) -> None:
+    if reservation is None:
+        return
+    try:
+        if usage is None or not usage.has_billable_tokens:
+            await _release_reservation(reservation)
+            return
+        async with get_background_session() as session:
+            service = ApiKeysService(ApiKeysRepository(session))
+            await service.finalize_usage_reservation(
+                reservation.reservation_id,
+                model=model,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+                service_tier=service_tier,
+            )
+    except Exception:
+        logger.warning(
+            "failed to settle external provider reservation reservation_id=%s model=%s",
+            reservation.reservation_id,
+            model,
+            exc_info=True,
+        )
+
+
 async def _finalize_image_reservation(
     reservation: ApiKeyUsageReservationData | None,
     *,
@@ -3159,6 +3770,169 @@ async def _finalize_image_reservation(
             model,
             exc_info=True,
         )
+
+
+def _external_route_public_error(
+    request: Request,
+    resolution: ExternalRouteResolution,
+    *,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    if resolution.status == ExternalRouteResolutionStatus.ENDPOINT_UNSUPPORTED:
+        message = resolution.reason or "External route does not support this endpoint"
+        return _logged_error_json_response(
+            request,
+            400,
+            openai_error("external_route_endpoint_unsupported", message, error_type="invalid_request_error"),
+            headers=headers,
+        )
+    message = resolution.reason or "External provider is unavailable"
+    return _logged_error_json_response(
+        request,
+        503,
+        openai_error("external_provider_unavailable", message, error_type="server_error"),
+        headers=headers,
+    )
+
+
+def _external_provider_error_response(
+    request: Request,
+    exc: ExternalProviderError,
+    *,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    return _logged_error_json_response(
+        request,
+        exc.status_code,
+        exc.payload,
+        headers=headers,
+    )
+
+
+def _external_provider_client(provider: ExternalProviderConfig) -> OpenAICompatibleProviderClient:
+    return OpenAICompatibleProviderClient(provider)
+
+
+def _external_chat_provider_payload(
+    payload: ChatCompletionsRequest,
+    responses_payload: ResponsesRequest,
+    route: ExternalModelRouteConfig,
+) -> dict[str, JsonValue]:
+    provider_payload = payload.model_dump(mode="json", exclude_none=True)
+    provider_payload["model"] = route.target_model
+    if responses_payload.service_tier is None:
+        provider_payload.pop("service_tier", None)
+    else:
+        provider_payload["service_tier"] = responses_payload.service_tier
+    if responses_payload.reasoning is not None:
+        provider_payload["reasoning"] = responses_payload.reasoning.model_dump(mode="json", exclude_none=True)
+        provider_payload.pop("reasoning_effort", None)
+    normalize_reasoning_aliases(provider_payload)
+    for field in route.strip_request_fields:
+        provider_payload.pop(field, None)
+    provider_payload.update(route.request_overrides)
+    return provider_payload
+
+
+def _external_responses_provider_payload(
+    payload: ResponsesRequest,
+    route: ExternalModelRouteConfig,
+) -> dict[str, JsonValue]:
+    provider_payload = dict(payload.to_payload())
+    provider_payload["model"] = route.target_model
+    for field in route.strip_request_fields:
+        provider_payload.pop(field, None)
+    provider_payload.update(route.request_overrides)
+    return provider_payload
+
+
+async def _probe_external_provider_stream_startup(
+    stream: AsyncIterator[str],
+    *,
+    timeout_seconds: float,
+) -> tuple[AsyncIterator[str], ExternalProviderError | None]:
+    iterator = stream.__aiter__()
+    first_task = asyncio.create_task(anext(iterator))
+    try:
+        first = await asyncio.wait_for(asyncio.shield(first_task), timeout=timeout_seconds)
+    except StopAsyncIteration:
+        return _prepend_first(None, iterator), None
+    except ExternalProviderError as exc:
+        return _prepend_first(None, iterator), exc
+    except asyncio.TimeoutError:
+        return _prepend_pending_first(first_task, iterator), None
+    return _prepend_first(first, iterator), None
+
+
+async def _prepend_pending_first(
+    first_task: asyncio.Task[str],
+    stream: AsyncIterator[str],
+) -> AsyncIterator[str]:
+    try:
+        first = await first_task
+    except StopAsyncIteration:
+        return
+    yield first
+    async for item in stream:
+        yield item
+
+
+async def _rewrite_external_provider_stream(
+    stream: AsyncIterator[str],
+    *,
+    route: ExternalModelRouteConfig,
+    usage_ref: dict[str, ExternalProviderUsage | None],
+    computer_use_mcp_bridge: bool = False,
+) -> AsyncIterator[str]:
+    async for event in stream:
+        payload = parse_sse_data_json(event)
+        if payload is not None:
+            usage = extract_external_provider_usage(payload)
+            if usage is not None:
+                usage_ref["usage"] = usage
+        rewritten = rewrite_public_model_in_sse(event, target_model=route.target_model, public_model=route.public_model)
+        if computer_use_mcp_bridge:
+            rewritten = rewrite_computer_use_mcp_response_sse(rewritten)
+        yield rewritten
+
+
+def _external_provider_metric_error_code(error_code: str) -> str:
+    if error_code in _EXTERNAL_PROVIDER_METRIC_ERROR_CODES:
+        return error_code
+    return "provider_error"
+
+
+def _record_external_provider_metrics(
+    route: ExternalModelRouteConfig,
+    endpoint: str,
+    *,
+    status: str,
+    latency_seconds: float,
+    usage: ExternalProviderUsage | None = None,
+    error_code: str | None = None,
+    fallback_reason: str | None = None,
+) -> None:
+    if not PROMETHEUS_AVAILABLE:
+        return
+    status_class = "success" if status == "success" else "error"
+    if external_provider_requests_total is not None:
+        external_provider_requests_total.labels(route.provider_id, endpoint, status, status_class).inc()
+    if external_provider_latency_seconds is not None:
+        external_provider_latency_seconds.labels(route.provider_id, endpoint, status).observe(latency_seconds)
+    if error_code and external_provider_errors_total is not None:
+        external_provider_errors_total.labels(
+            route.provider_id, endpoint, _external_provider_metric_error_code(error_code)
+        ).inc()
+    if fallback_reason and external_provider_fallback_total is not None:
+        external_provider_fallback_total.labels(route.provider_id, endpoint, fallback_reason).inc()
+    if usage is not None and external_provider_tokens_total is not None:
+        external_provider_tokens_total.labels(route.provider_id, endpoint, "input").inc(usage.input_tokens)
+        external_provider_tokens_total.labels(route.provider_id, endpoint, "output").inc(usage.output_tokens)
+        external_provider_tokens_total.labels(route.provider_id, endpoint, "cached_input").inc(
+            usage.cached_input_tokens
+        )
+        if usage.reasoning_tokens is not None:
+            external_provider_tokens_total.labels(route.provider_id, endpoint, "reasoning").inc(usage.reasoning_tokens)
 
 
 def _effective_model_for_api_key(api_key: ApiKeyData | None, requested_model: str) -> str:

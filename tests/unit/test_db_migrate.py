@@ -444,6 +444,35 @@ def test_request_logs_response_lookup_migration_handles_preexisting_session_id_c
         assert "idx_logs_request_status_api_key_session_time" in index_names
 
 
+def test_external_provider_request_log_fields_migration_adds_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-provider-request-log-fields.db"
+    url = _db_url(db_path)
+    pre_revision = "20260607_000000_merge_weekly_monthly_useragent_heads"
+    target_revision = "20260609_000000_add_external_provider_request_log_fields"
+    expected_columns = {
+        "external_provider_id",
+        "external_provider_model",
+        "external_route_public_model",
+        "external_route_endpoint",
+        "external_fallback_used",
+        "external_fallback_reason",
+    }
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("request_logs")}
+        assert expected_columns.isdisjoint(columns)
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("request_logs")}
+        assert expected_columns.issubset(columns)
+
+
 def test_quota_planner_migration_repairs_preexisting_request_kind_column(tmp_path: Path) -> None:
     db_path = tmp_path / "quota-planner-request-kind-drift.db"
     url = _db_url(db_path)
