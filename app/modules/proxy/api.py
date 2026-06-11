@@ -576,7 +576,7 @@ async def v1_responses(
             api_key,
             codex_session_affinity=False,
             openai_cache_affinity=True,
-            prefer_http_bridge=True,
+            prefer_http_bridge=False,
         )
     return await _collect_responses(
         request,
@@ -585,7 +585,7 @@ async def v1_responses(
         api_key,
         codex_session_affinity=False,
         openai_cache_affinity=True,
-        prefer_http_bridge=True,
+        prefer_http_bridge=False,
     )
 
 
