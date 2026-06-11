@@ -47,6 +47,7 @@ from app.modules.accounts.schemas import (
     OpenCodeOAuthAuth,
 )
 from app.modules.limit_warmup.repository import LimitWarmupRepository
+from app.modules.periodic_warmup.repository import PeriodicWarmupRepository
 from app.modules.proxy.account_cache import get_account_selection_cache
 from app.modules.usage.additional_quota_keys import (
     get_additional_display_label_for_quota_key,
@@ -88,12 +89,14 @@ class AccountsService:
         usage_repo: UsageRepository | None = None,
         additional_usage_repo: AdditionalUsageRepository | AdditionalUsageRepositoryPort | None = None,
         limit_warmup_repo: LimitWarmupRepository | None = None,
+        periodic_warmup_repo: PeriodicWarmupRepository | None = None,
         auth_manager: AuthManager | None = None,
     ) -> None:
         self._repo = repo
         self._usage_repo = usage_repo
         self._additional_usage_repo = additional_usage_repo
         self._limit_warmup_repo = limit_warmup_repo
+        self._periodic_warmup_repo = periodic_warmup_repo
         self._usage_updater = UsageUpdater(usage_repo, repo, additional_usage_repo) if usage_repo else None
         self._encryptor = TokenEncryptor()
         self._auth_manager = auth_manager
@@ -110,6 +113,9 @@ class AccountsService:
         request_usage_rows = await self._repo.list_request_usage_summary_by_account(account_ids)
         limit_warmups_by_account = (
             await self._limit_warmup_repo.latest_by_account(account_ids) if self._limit_warmup_repo else {}
+        )
+        periodic_warmups_by_account = (
+            await self._periodic_warmup_repo.latest_by_account(account_ids) if self._periodic_warmup_repo else {}
         )
         request_usage_by_account = {
             account_id: AccountRequestUsage(
@@ -172,6 +178,7 @@ class AccountsService:
             request_usage_by_account=request_usage_by_account,
             additional_quotas_by_account=additional_quotas_by_account,
             limit_warmups_by_account=limit_warmups_by_account,
+            periodic_warmups_by_account=periodic_warmups_by_account,
             encryptor=self._encryptor,
         )
 
@@ -372,6 +379,12 @@ class AccountsService:
 
     async def set_limit_warmup_enabled(self, account_id: str, enabled: bool) -> bool:
         result = await self._repo.update_limit_warmup_enabled(account_id, enabled)
+        if result:
+            get_account_selection_cache().invalidate()
+        return result
+
+    async def set_periodic_warmup_enabled(self, account_id: str, enabled: bool) -> bool:
+        result = await self._repo.update_periodic_warmup_enabled(account_id, enabled)
         if result:
             get_account_selection_cache().invalidate()
         return result

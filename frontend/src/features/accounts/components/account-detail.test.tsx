@@ -30,6 +30,7 @@ describe("AccountDetail", () => {
         onReauth={vi.fn()}
         onExportAuth={vi.fn()}
         onLimitWarmupChange={vi.fn()}
+        onPeriodicWarmupChange={vi.fn()}
         onRoutingPolicyChange={onRoutingPolicyChange}
         onSecurityWorkAuthorizedChange={vi.fn()}
       />,

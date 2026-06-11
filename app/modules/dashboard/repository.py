@@ -9,6 +9,7 @@ from app.core.usage.types import BucketModelAggregate, RequestActivityAggregate
 from app.db.models import (
     Account,
     AccountLimitWarmup,
+    AccountPeriodicWarmup,
     AdditionalUsageHistory,
     DashboardSettings,
     RequestLog,
@@ -16,6 +17,7 @@ from app.db.models import (
 )
 from app.modules.accounts.repository import AccountsRepository
 from app.modules.limit_warmup.repository import LimitWarmupRepository
+from app.modules.periodic_warmup.repository import PeriodicWarmupRepository
 from app.modules.request_logs.repository import RequestLogsRepository
 from app.modules.settings.repository import SettingsRepository
 from app.modules.usage.repository import AdditionalUsageRepository, UsageHistorySnapshot, UsageRepository
@@ -28,6 +30,7 @@ class DashboardRepository:
         self._logs_repo = RequestLogsRepository(session)
         self._additional_usage_repo = AdditionalUsageRepository(session)
         self._limit_warmup_repo = LimitWarmupRepository(session)
+        self._periodic_warmup_repo = PeriodicWarmupRepository(session)
         self._settings_repo = SettingsRepository(session)
 
     async def list_accounts(self) -> list[Account]:
@@ -89,6 +92,9 @@ class DashboardRepository:
 
     async def latest_limit_warmups_by_account(self, account_ids: list[str]) -> dict[str, AccountLimitWarmup]:
         return await self._limit_warmup_repo.latest_by_account(account_ids)
+
+    async def latest_periodic_warmups_by_account(self, account_ids: list[str]) -> dict[str, AccountPeriodicWarmup]:
+        return await self._periodic_warmup_repo.latest_by_account(account_ids)
 
     async def get_settings(self) -> DashboardSettings:
         return await self._settings_repo.get_or_create()

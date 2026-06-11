@@ -104,6 +104,10 @@ export function AccountCard({ account, showAccountId = false, onAction }: Accoun
   const warmupDetail = account.limitWarmup
     ? `${formatSlug(account.limitWarmup.status)} | ${account.limitWarmup.window === "primary" ? "5h" : "weekly"} | ${formatSlug(account.limitWarmup.model)} | ${formatDateTimeInline(account.limitWarmup.completedAt ?? account.limitWarmup.attemptedAt)}`
     : "No attempts";
+  const periodicWarmupStatus = account.periodicWarmupEnabled ? "Periodic on" : "Periodic off";
+  const periodicWarmupDetail = account.periodicWarmup
+    ? `${formatSlug(account.periodicWarmup.status)} | ${formatSlug(account.periodicWarmup.model)} | ${formatDateTimeInline(account.periodicWarmup.completedAt ?? account.periodicWarmup.attemptedAt)}`
+    : "No periodic attempts";
 
   return (
     <div className="card-hover rounded-xl border bg-card p-4">
@@ -161,6 +165,11 @@ export function AccountCard({ account, showAccountId = false, onAction }: Accoun
           <Zap className="h-3 w-3" aria-hidden="true" />
           {account.limitWarmupEnabled ? "On" : "Off"}
         </Button>
+      </div>
+
+      <div className="mt-2 rounded-lg bg-muted/30 px-2.5 py-2 text-xs">
+        <p className="font-medium">{periodicWarmupStatus}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{periodicWarmupDetail}</p>
       </div>
 
       <div className="mt-3 text-xs text-muted-foreground">

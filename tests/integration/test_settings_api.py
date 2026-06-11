@@ -72,6 +72,11 @@ async def test_settings_api_get_and_update(async_client):
     assert payload["limitWarmupPrompt"] == "Say OK."
     assert payload["limitWarmupCooldownSeconds"] == 3600
     assert payload["limitWarmupMinAvailablePercent"] == 100.0
+    assert payload["periodicWarmupEnabled"] is False
+    assert payload["periodicWarmupIntervalHours"] == 6
+    assert payload["periodicWarmupModel"] == "auto"
+    assert payload["periodicWarmupPrompt"] == "Say OK."
+    assert payload["periodicWarmupTargetScope"] == "all_active"
     assert payload["weeklyPaceWorkingDays"] == "0,1,2,3,4,5,6"
 
     response = await async_client.put(
@@ -104,6 +109,11 @@ async def test_settings_api_get_and_update(async_client):
             "limitWarmupPrompt": "Say OK.",
             "limitWarmupCooldownSeconds": 7200,
             "limitWarmupMinAvailablePercent": 99.0,
+            "periodicWarmupEnabled": True,
+            "periodicWarmupIntervalHours": 12,
+            "periodicWarmupModel": "gpt-5.4-mini",
+            "periodicWarmupPrompt": "Say OK periodically.",
+            "periodicWarmupTargetScope": "account_opt_in",
             "weeklyPaceWorkingDays": "0,1,2,3,4",
         },
     )
@@ -137,6 +147,11 @@ async def test_settings_api_get_and_update(async_client):
     assert updated["limitWarmupPrompt"] == "Say OK."
     assert updated["limitWarmupCooldownSeconds"] == 7200
     assert updated["limitWarmupMinAvailablePercent"] == 99.0
+    assert updated["periodicWarmupEnabled"] is True
+    assert updated["periodicWarmupIntervalHours"] == 12
+    assert updated["periodicWarmupModel"] == "gpt-5.4-mini"
+    assert updated["periodicWarmupPrompt"] == "Say OK periodically."
+    assert updated["periodicWarmupTargetScope"] == "account_opt_in"
     assert updated["weeklyPaceWorkingDays"] == "0,1,2,3,4"
 
     response = await async_client.get("/api/settings")
@@ -170,6 +185,11 @@ async def test_settings_api_get_and_update(async_client):
     assert payload["limitWarmupPrompt"] == "Say OK."
     assert payload["limitWarmupCooldownSeconds"] == 7200
     assert payload["limitWarmupMinAvailablePercent"] == 99.0
+    assert payload["periodicWarmupEnabled"] is True
+    assert payload["periodicWarmupIntervalHours"] == 12
+    assert payload["periodicWarmupModel"] == "gpt-5.4-mini"
+    assert payload["periodicWarmupPrompt"] == "Say OK periodically."
+    assert payload["periodicWarmupTargetScope"] == "account_opt_in"
     assert payload["weeklyPaceWorkingDays"] == "0,1,2,3,4"
 
 
@@ -345,6 +365,22 @@ async def test_settings_api_allows_partial_updates(async_client):
     assert updated["routingStrategy"] == original["routingStrategy"]
     assert updated["upstreamProxyRoutingEnabled"] == original["upstreamProxyRoutingEnabled"]
     assert updated["upstreamProxyDefaultPoolId"] == original["upstreamProxyDefaultPoolId"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"periodicWarmupIntervalHours": 0},
+        {"periodicWarmupModel": "   "},
+        {"periodicWarmupPrompt": "   "},
+        {"periodicWarmupTargetScope": "paused_only"},
+    ],
+)
+async def test_settings_api_rejects_invalid_periodic_warmup_settings(async_client, payload):
+    response = await async_client.put("/api/settings", json=payload)
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,7 @@ const EXPECTED_ENDPOINTS = [
 	"POST /api/accounts/:accountId/probe",
 	"PUT /api/accounts/:accountId/alias",
 	"PUT /api/accounts/:accountId/limit-warmup",
+	"PUT /api/accounts/:accountId/periodic-warmup",
 	"PUT /api/accounts/:accountId/routing-policy",
 	"GET /api/accounts/:accountId/trends",
 	"POST /api/accounts/:accountId/export",

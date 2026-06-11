@@ -26,6 +26,11 @@ const LIMIT_WARMUP_DEFAULTS = {
   limitWarmupPrompt: "Say OK.",
   limitWarmupCooldownSeconds: 3600,
   limitWarmupMinAvailablePercent: 100,
+  periodicWarmupEnabled: false,
+  periodicWarmupIntervalHours: 6,
+  periodicWarmupModel: "auto",
+  periodicWarmupPrompt: "Say OK.",
+  periodicWarmupTargetScope: "all_active" as const,
 };
 
 const BASE_SETTINGS: DashboardSettings = {
@@ -458,6 +463,12 @@ describe("RoutingSettings", () => {
     expect(screen.getByLabelText("Warmup model")).toHaveAttribute("maxLength", "128");
     expect(screen.getByLabelText("Warm-up model")).toHaveAttribute("maxLength", "128");
     expect(screen.getByLabelText("Warm-up prompt")).toHaveAttribute("maxLength", "512");
+    expect(screen.getByRole("switch", { name: "Enable periodic warm-up" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Periodic warm-up target scope" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Periodic warm-up interval hours")).toHaveAttribute("min", "1");
+    expect(screen.getByLabelText("Periodic warm-up interval hours")).toHaveAttribute("step", "1");
+    expect(screen.getByLabelText("Periodic warm-up model")).toHaveAttribute("maxLength", "128");
+    expect(screen.getByLabelText("Periodic warm-up prompt")).toHaveAttribute("maxLength", "512");
   });
 
   it("saves weekly pace working-day changes", async () => {
@@ -506,6 +517,18 @@ describe("RoutingSettings", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("blocks periodic warm-up intervals below one hour", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RoutingSettings settings={BASE_SETTINGS} busy={false} onSave={onSave} />);
+
+    await user.clear(screen.getByLabelText("Periodic warm-up interval hours"));
+    await user.type(screen.getByLabelText("Periodic warm-up interval hours"), "0");
+
+    expect(screen.getByRole("button", { name: "Save periodic warm-up" })).toBeDisabled();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("does not silently truncate decimal warm-up cooldown values", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
@@ -514,7 +537,7 @@ describe("RoutingSettings", () => {
     await user.clear(screen.getByLabelText("Warm-up cooldown"));
     await user.type(screen.getByLabelText("Warm-up cooldown"), "60.5");
 
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save limit warm-up" })).toBeDisabled();
     expect(onSave).not.toHaveBeenCalled();
   });
 

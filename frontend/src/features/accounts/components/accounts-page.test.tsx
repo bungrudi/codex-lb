@@ -63,6 +63,7 @@ function account(overrides: Partial<AccountSummary>): AccountSummary {
     status: "active",
     additionalQuotas: [],
     limitWarmupEnabled: false,
+    periodicWarmupEnabled: false,
     ...overrides,
   };
 }
@@ -109,6 +110,7 @@ describe("AccountsPage", () => {
       exportAuthMutation: idleMutation(),
       setAliasMutation: idleMutation(),
       limitWarmupMutation: idleMutation(),
+      periodicWarmupMutation: idleMutation(),
       routingPolicyMutation: idleMutation(),
       updateMutation: idleMutation(),
     } as unknown as ReturnType<typeof useAccounts>);

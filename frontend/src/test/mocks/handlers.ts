@@ -545,6 +545,32 @@ export const handlers = [
   ),
 
   http.put(
+    "/api/accounts/:accountId/periodic-warmup",
+    async ({ params, request }) => {
+      const accountId = String(params.accountId);
+      const account = findAccount(accountId);
+      if (!account) {
+        return HttpResponse.json(
+          {
+            error: { code: "account_not_found", message: "Account not found" },
+          },
+          { status: 404 },
+        );
+      }
+      const body = await request.json().catch(() => ({}));
+      const enabled =
+        typeof body === "object" && body !== null && "enabled" in body
+          ? Boolean((body as { enabled?: unknown }).enabled)
+          : false;
+      account.periodicWarmupEnabled = enabled;
+      return HttpResponse.json({
+        status: enabled ? "enabled" : "disabled",
+        enabled,
+      });
+    },
+  ),
+
+  http.put(
     "/api/accounts/:accountId/routing-policy",
     async ({ params, request }) => {
       const accountId = String(params.accountId);

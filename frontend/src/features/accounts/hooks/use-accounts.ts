@@ -13,6 +13,7 @@ import {
   setAccountAlias,
   updateAccount,
   updateAccountLimitWarmup,
+  updateAccountPeriodicWarmup,
   updateAccountRoutingPolicy,
 } from "@/features/accounts/api";
 import type { AccountRoutingPolicy } from "@/features/accounts/schemas";
@@ -116,6 +117,18 @@ export function useAccountMutations() {
     },
   });
 
+  const periodicWarmupMutation = useMutation({
+    mutationFn: ({ accountId, enabled }: { accountId: string; enabled: boolean }) =>
+      updateAccountPeriodicWarmup(accountId, enabled),
+    onSuccess: (data) => {
+      toast.success(data.enabled ? "Periodic warm-up enabled" : "Periodic warm-up disabled");
+      invalidateAccountRelatedQueries(queryClient);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Periodic warm-up update failed");
+    },
+  });
+
   const routingPolicyMutation = useMutation({
     mutationFn: ({
       accountId,
@@ -166,6 +179,7 @@ export function useAccountMutations() {
     probeMutation,
     exportAuthMutation,
     limitWarmupMutation,
+    periodicWarmupMutation,
     routingPolicyMutation,
     updateMutation,
   };

@@ -21,6 +21,10 @@ export const LimitWarmupWindowsSchema = z.enum([
   "secondary",
   "both",
 ]);
+export const PeriodicWarmupTargetScopeSchema = z.enum([
+  "all_active",
+  "account_opt_in",
+]);
 export const AdditionalQuotaRoutingPolicySchema = z.enum([
   "inherit",
   "normal",
@@ -92,6 +96,11 @@ export const DashboardSettingsSchema = z
       .max(100)
       .optional()
       .default(100),
+    periodicWarmupEnabled: z.boolean().optional().default(false),
+    periodicWarmupIntervalHours: z.number().int().min(1).optional().default(6),
+    periodicWarmupModel: z.string().trim().min(1).max(128).optional().default("auto"),
+    periodicWarmupPrompt: z.string().trim().min(1).max(512).optional().default("Say OK."),
+    periodicWarmupTargetScope: PeriodicWarmupTargetScopeSchema.optional().default("all_active"),
     weeklyPaceWorkingDays: WeeklyPaceWorkingDaysSchema,
   })
   .transform((settings) => {
@@ -146,6 +155,11 @@ export const SettingsUpdateRequestSchema = z.object({
   limitWarmupPrompt: LimitWarmupPromptSchema.optional(),
   limitWarmupCooldownSeconds: z.number().int().min(60).optional(),
   limitWarmupMinAvailablePercent: z.number().positive().max(100).optional(),
+  periodicWarmupEnabled: z.boolean().optional(),
+  periodicWarmupIntervalHours: z.number().int().min(1).optional(),
+  periodicWarmupModel: z.string().trim().min(1).max(128).optional(),
+  periodicWarmupPrompt: z.string().trim().min(1).max(512).optional(),
+  periodicWarmupTargetScope: PeriodicWarmupTargetScopeSchema.optional(),
   weeklyPaceWorkingDays: WeeklyPaceWorkingDaysValueSchema.optional(),
 });
 
@@ -171,6 +185,7 @@ export type DashboardSettings = Omit<
   Partial<StickyThresholdValues>;
 export type SettingsUpdateRequest = z.infer<typeof SettingsUpdateRequestSchema>;
 export type AdditionalQuotaRoutingPolicy = z.infer<typeof AdditionalQuotaRoutingPolicySchema>;
+export type PeriodicWarmupTargetScope = z.infer<typeof PeriodicWarmupTargetScopeSchema>;
 
 export const UpstreamProxyEndpointSchema = z.object({
   id: z.string(),

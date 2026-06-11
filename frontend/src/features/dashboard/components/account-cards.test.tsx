@@ -64,6 +64,31 @@ describe("AccountCards", () => {
     expect(screen.getByRole("button", { name: "Disable limit warm-up for Two Account" })).toBeInTheDocument();
   });
 
+  it("shows periodic warm-up state and latest attempt", () => {
+    render(
+      <AccountCards
+        accounts={[
+          createAccountSummary({
+            periodicWarmupEnabled: true,
+            periodicWarmup: {
+              status: "succeeded",
+              model: "gpt-5.4-mini",
+              attemptedAt: "2026-01-01T12:00:00.000Z",
+              completedAt: "2026-01-01T12:00:02.000Z",
+              requestId: "req_periodic",
+              errorCode: null,
+              errorMessage: null,
+            },
+          }),
+        ]}
+        onAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Periodic on")).toBeInTheDocument();
+    expect(screen.getByText(/Succeeded \| Gpt-5\.4-mini/)).toBeInTheDocument();
+  });
+
   it("shows account ids only for backend-marked duplicate account slots", () => {
     render(
       <AccountCards

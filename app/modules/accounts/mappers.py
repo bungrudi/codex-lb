@@ -10,11 +10,12 @@ from app.core.plan_types import coerce_account_plan_type
 from app.core.usage.quota import apply_usage_quota
 from app.core.usage.types import UsageTrendBucket, UsageWindowRow
 from app.core.utils.time import from_epoch_seconds
-from app.db.models import Account, AccountLimitWarmup, AccountStatus, UsageHistory
+from app.db.models import Account, AccountLimitWarmup, AccountPeriodicWarmup, AccountStatus, UsageHistory
 from app.modules.accounts.schemas import (
     AccountAdditionalQuota,
     AccountAuthStatus,
     AccountLimitWarmupStatus,
+    AccountPeriodicWarmupStatus,
     AccountRequestUsage,
     AccountSummary,
     AccountTokenStatus,
@@ -37,6 +38,7 @@ def build_account_summaries(
     request_usage_by_account: dict[str, AccountRequestUsage] | None = None,
     additional_quotas_by_account: dict[str, list[AccountAdditionalQuota]] | None = None,
     limit_warmups_by_account: dict[str, AccountLimitWarmup] | None = None,
+    periodic_warmups_by_account: dict[str, AccountPeriodicWarmup] | None = None,
     encryptor: TokenEncryptor,
     include_auth: bool = True,
 ) -> list[AccountSummary]:
@@ -50,6 +52,7 @@ def build_account_summaries(
             request_usage_by_account.get(account.id) if request_usage_by_account else None,
             additional_quotas_by_account.get(account.id) if additional_quotas_by_account else None,
             limit_warmups_by_account.get(account.id) if limit_warmups_by_account else None,
+            periodic_warmups_by_account.get(account.id) if periodic_warmups_by_account else None,
             encryptor,
             include_auth=include_auth,
             is_email_duplicate=_duplicate_detection_key(account) in duplicate_keys,
@@ -96,6 +99,7 @@ def _account_to_summary(
     request_usage: AccountRequestUsage | None,
     additional_quotas: list[AccountAdditionalQuota] | None,
     limit_warmup: AccountLimitWarmup | None,
+    periodic_warmup: AccountPeriodicWarmup | None,
     encryptor: TokenEncryptor,
     include_auth: bool = True,
     is_email_duplicate: bool = False,
@@ -259,6 +263,8 @@ def _account_to_summary(
         auth=auth_status,
         limit_warmup_enabled=bool(account.limit_warmup_enabled),
         limit_warmup=_limit_warmup_to_status(limit_warmup),
+        periodic_warmup_enabled=bool(account.periodic_warmup_enabled),
+        periodic_warmup=_periodic_warmup_to_status(periodic_warmup),
         is_email_duplicate=is_email_duplicate,
     )
 
@@ -279,6 +285,20 @@ def _limit_warmup_to_status(entry: AccountLimitWarmup | None) -> AccountLimitWar
         model=entry.model,
         attempted_at=entry.attempted_at,
         completed_at=entry.completed_at,
+        error_code=entry.error_code,
+        error_message=entry.error_message,
+    )
+
+
+def _periodic_warmup_to_status(entry: AccountPeriodicWarmup | None) -> AccountPeriodicWarmupStatus | None:
+    if entry is None:
+        return None
+    return AccountPeriodicWarmupStatus(
+        status=entry.status,
+        model=entry.model,
+        attempted_at=entry.attempted_at,
+        completed_at=entry.completed_at,
+        request_id=entry.request_id,
         error_code=entry.error_code,
         error_message=entry.error_message,
     )

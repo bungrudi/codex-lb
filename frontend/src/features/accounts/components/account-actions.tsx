@@ -35,6 +35,7 @@ export type AccountActionsProps = {
   onExportAuth: (accountId: string) => void;
   onSecurityWorkAuthorizedChange: (accountId: string, enabled: boolean) => void;
   onLimitWarmupChange: (accountId: string, enabled: boolean) => void;
+  onPeriodicWarmupChange: (accountId: string, enabled: boolean) => void;
   onRoutingPolicyChange: (
     accountId: string,
     routingPolicy: AccountRoutingPolicy,
@@ -52,6 +53,7 @@ export function AccountActions({
   onExportAuth,
   onSecurityWorkAuthorizedChange,
   onLimitWarmupChange,
+  onPeriodicWarmupChange,
   onRoutingPolicyChange,
 }: AccountActionsProps) {
   const showOperatorRecoveryAction =
@@ -171,6 +173,21 @@ export function AccountActions({
         >
           <Zap className="h-3.5 w-3.5" />
           {account.limitWarmupEnabled ? "Disable warm-up" : "Enable warm-up"}
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() =>
+            onPeriodicWarmupChange(account.accountId, !account.periodicWarmupEnabled)
+          }
+          disabled={busy}
+          aria-label={`${account.periodicWarmupEnabled ? "Disable" : "Enable"} periodic warm-up for ${account.displayName || account.email}`}
+        >
+          <Zap className="h-3.5 w-3.5" />
+          {account.periodicWarmupEnabled ? "Disable periodic" : "Enable periodic"}
         </Button>
 
         <Button

@@ -100,6 +100,76 @@ def test_inspect_migration_state_no_upgrade_after_head(tmp_path: Path) -> None:
     assert state.has_alembic_version_table is True
 
 
+def test_periodic_account_warmup_migration_schema_and_defaults(tmp_path: Path) -> None:
+    db_path = tmp_path / "periodic_warmup.db"
+    url = _db_url(db_path)
+
+    run_upgrade(url, "head", bootstrap_legacy=False)
+
+    engine = create_engine(to_sync_database_url(url), future=True)
+    try:
+        with engine.begin() as connection:
+            inspector = inspect(connection)
+            assert "account_periodic_warmups" in inspector.get_table_names()
+            account_columns = {column["name"] for column in inspector.get_columns("accounts")}
+            settings_columns = {column["name"] for column in inspector.get_columns("dashboard_settings")}
+            assert "periodic_warmup_enabled" in account_columns
+            assert {
+                "periodic_warmup_enabled",
+                "periodic_warmup_interval_hours",
+                "periodic_warmup_model",
+                "periodic_warmup_prompt",
+                "periodic_warmup_target_scope",
+            }.issubset(settings_columns)
+
+            index_names = {
+                row[0]
+                for row in connection.execute(
+                    text(
+                        "SELECT name FROM sqlite_master "
+                        "WHERE type = 'index' AND tbl_name = 'account_periodic_warmups'"
+                    )
+                )
+            }
+            unique_constraints = inspector.get_unique_constraints("account_periodic_warmups")
+            assert any(constraint["column_names"] == ["claim_key"] for constraint in unique_constraints)
+            assert "idx_account_periodic_warmups_account_attempted" in index_names
+            assert "idx_account_periodic_warmups_status_attempted" in index_names
+
+            connection.execute(
+                text(
+                    "INSERT INTO dashboard_settings (id, totp_required_on_login, api_key_auth_enabled) "
+                    "VALUES (99, 0, 1)"
+                )
+            )
+            settings_row = connection.execute(
+                text(
+                    "SELECT periodic_warmup_enabled, periodic_warmup_interval_hours, periodic_warmup_model, "
+                    "periodic_warmup_prompt, periodic_warmup_target_scope "
+                    "FROM dashboard_settings WHERE id = 99"
+                )
+            ).one()
+            assert settings_row == (False, 6, "auto", "Say OK.", "all_active")
+
+            connection.execute(
+                text(
+                    "INSERT INTO accounts ("
+                    "id, chatgpt_account_id, email, plan_type, access_token_encrypted, "
+                    "refresh_token_encrypted, id_token_encrypted, last_refresh, status"
+                    ") VALUES ("
+                    "'acc_periodic', 'raw_periodic', 'periodic@example.com', 'plus', "
+                    "X'00', X'00', X'00', '2026-01-01 00:00:00', 'active'"
+                    ")"
+                )
+            )
+            account_default = connection.execute(
+                text("SELECT periodic_warmup_enabled FROM accounts WHERE id = 'acc_periodic'")
+            ).scalar_one()
+            assert account_default == 0
+    finally:
+        engine.dispose()
+
+
 def test_wait_for_head_returns_once_schema_is_current(monkeypatch) -> None:
     states = iter(
         [

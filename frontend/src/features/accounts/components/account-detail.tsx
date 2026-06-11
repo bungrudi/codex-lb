@@ -28,6 +28,7 @@ export type AccountDetailProps = {
   onReauth: () => void;
   onExportAuth: (accountId: string) => void;
   onLimitWarmupChange: (accountId: string, enabled: boolean) => void;
+  onPeriodicWarmupChange: (accountId: string, enabled: boolean) => void;
   onRoutingPolicyChange: (
     accountId: string,
     routingPolicy: AccountRoutingPolicy,
@@ -49,6 +50,7 @@ export function AccountDetail({
   onReauth,
   onExportAuth,
   onLimitWarmupChange,
+  onPeriodicWarmupChange,
   onRoutingPolicyChange,
   onSecurityWorkAuthorizedChange,
   upstreamProxyAdmin = null,
@@ -143,6 +145,7 @@ export function AccountDetail({
         onReauth={onReauth}
         onExportAuth={onExportAuth}
         onLimitWarmupChange={onLimitWarmupChange}
+        onPeriodicWarmupChange={onPeriodicWarmupChange}
         onRoutingPolicyChange={onRoutingPolicyChange}
         onSecurityWorkAuthorizedChange={onSecurityWorkAuthorizedChange}
       />

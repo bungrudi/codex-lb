@@ -72,6 +72,10 @@ export function AccountListItem({
   const warmupMeta = account.limitWarmup
     ? `${formatSlug(account.limitWarmup.status)} | ${formatSlug(account.limitWarmup.model)} | ${formatDateTimeInline(account.limitWarmup.completedAt ?? account.limitWarmup.attemptedAt)}`
     : "No attempts";
+  const periodicWarmupLabel = account.periodicWarmupEnabled ? "Periodic on" : "Periodic off";
+  const periodicWarmupMeta = account.periodicWarmup
+    ? `${formatSlug(account.periodicWarmup.status)} | ${formatSlug(account.periodicWarmup.model)} | ${formatDateTimeInline(account.periodicWarmup.completedAt ?? account.periodicWarmup.attemptedAt)}`
+    : "No periodic attempts";
 
   return (
     <button
@@ -136,9 +140,15 @@ export function AccountListItem({
           />
         ) : null}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-        <span>{warmupLabel}</span>
-        <span className="truncate">{warmupMeta}</span>
+      <div className="mt-2 space-y-1 text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <span>{warmupLabel}</span>
+          <span className="truncate">{warmupMeta}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span>{periodicWarmupLabel}</span>
+          <span className="truncate">{periodicWarmupMeta}</span>
+        </div>
       </div>
     </button>
   );

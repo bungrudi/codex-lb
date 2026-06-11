@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.core.auth import DEFAULT_EMAIL, generate_unique_account_id, parse_auth_json
-from app.db.models import Account, AccountStatus
+from app.db.models import Account, AccountPeriodicWarmup, AccountStatus
 from app.db.session import SessionLocal
 
 pytestmark = pytest.mark.integration
@@ -224,6 +225,62 @@ async def test_update_account_limit_warmup_opt_in(async_client):
     assert matched is not None
     assert matched["limitWarmupEnabled"] is True
     assert matched["limitWarmup"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_account_periodic_warmup_opt_in_and_latest_status(async_client):
+    email = "periodic-warmup@example.com"
+    raw_account_id = "acc_periodic_warmup"
+    payload = {
+        "email": email,
+        "chatgpt_account_id": raw_account_id,
+        "https://api.openai.com/auth": {"chatgpt_plan_type": "plus"},
+    }
+    auth_json = {
+        "tokens": {
+            "idToken": _encode_jwt(payload),
+            "accessToken": "access",
+            "refreshToken": "refresh",
+            "accountId": raw_account_id,
+        },
+    }
+
+    expected_account_id = generate_unique_account_id(raw_account_id, email)
+    files = {"auth_json": ("auth.json", json.dumps(auth_json), "application/json")}
+    response = await async_client.post("/api/accounts/import", files=files)
+    assert response.status_code == 200
+
+    update = await async_client.put(
+        f"/api/accounts/{expected_account_id}/periodic-warmup",
+        json={"enabled": True},
+    )
+    assert update.status_code == 200
+    assert update.json() == {"status": "enabled", "enabled": True}
+
+    attempted_at = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    async with SessionLocal() as session:
+        session.add(
+            AccountPeriodicWarmup(
+                account_id=expected_account_id,
+                claim_key=f"periodic:{expected_account_id}:2026-01-01T12",
+                status="succeeded",
+                model="gpt-5.4-mini",
+                attempted_at=attempted_at,
+                completed_at=attempted_at + timedelta(seconds=2),
+                request_id="req_periodic",
+            )
+        )
+        await session.commit()
+
+    accounts = await async_client.get("/api/accounts")
+    assert accounts.status_code == 200
+    data = accounts.json()["accounts"]
+    matched = next((account for account in data if account["accountId"] == expected_account_id), None)
+    assert matched is not None
+    assert matched["periodicWarmupEnabled"] is True
+    assert matched["periodicWarmup"]["status"] == "succeeded"
+    assert matched["periodicWarmup"]["model"] == "gpt-5.4-mini"
+    assert matched["periodicWarmup"]["requestId"] == "req_periodic"
 
 
 @pytest.mark.asyncio

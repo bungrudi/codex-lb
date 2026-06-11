@@ -41,6 +41,11 @@ class DashboardSettingsData:
     limit_warmup_prompt: str
     limit_warmup_cooldown_seconds: int
     limit_warmup_min_available_percent: float
+    periodic_warmup_enabled: bool
+    periodic_warmup_interval_hours: int
+    periodic_warmup_model: str
+    periodic_warmup_prompt: str
+    periodic_warmup_target_scope: str
     weekly_pace_working_days: str
 
 
@@ -74,6 +79,11 @@ class DashboardSettingsUpdateData:
     limit_warmup_prompt: str
     limit_warmup_cooldown_seconds: int
     limit_warmup_min_available_percent: float
+    periodic_warmup_enabled: bool
+    periodic_warmup_interval_hours: int
+    periodic_warmup_model: str
+    periodic_warmup_prompt: str
+    periodic_warmup_target_scope: str
     weekly_pace_working_days: str
 
 
@@ -117,6 +127,11 @@ class SettingsService:
             limit_warmup_prompt=row.limit_warmup_prompt,
             limit_warmup_cooldown_seconds=row.limit_warmup_cooldown_seconds,
             limit_warmup_min_available_percent=row.limit_warmup_min_available_percent,
+            periodic_warmup_enabled=row.periodic_warmup_enabled,
+            periodic_warmup_interval_hours=row.periodic_warmup_interval_hours,
+            periodic_warmup_model=row.periodic_warmup_model,
+            periodic_warmup_prompt=row.periodic_warmup_prompt,
+            periodic_warmup_target_scope=row.periodic_warmup_target_scope,
             weekly_pace_working_days=row.weekly_pace_working_days,
         )
 
@@ -157,6 +172,11 @@ class SettingsService:
             limit_warmup_prompt=payload.limit_warmup_prompt,
             limit_warmup_cooldown_seconds=payload.limit_warmup_cooldown_seconds,
             limit_warmup_min_available_percent=payload.limit_warmup_min_available_percent,
+            periodic_warmup_enabled=payload.periodic_warmup_enabled,
+            periodic_warmup_interval_hours=payload.periodic_warmup_interval_hours,
+            periodic_warmup_model=payload.periodic_warmup_model,
+            periodic_warmup_prompt=payload.periodic_warmup_prompt,
+            periodic_warmup_target_scope=payload.periodic_warmup_target_scope,
             weekly_pace_working_days=payload.weekly_pace_working_days,
         )
         return DashboardSettingsData(
@@ -193,6 +213,11 @@ class SettingsService:
             limit_warmup_prompt=row.limit_warmup_prompt,
             limit_warmup_cooldown_seconds=row.limit_warmup_cooldown_seconds,
             limit_warmup_min_available_percent=row.limit_warmup_min_available_percent,
+            periodic_warmup_enabled=row.periodic_warmup_enabled,
+            periodic_warmup_interval_hours=row.periodic_warmup_interval_hours,
+            periodic_warmup_model=row.periodic_warmup_model,
+            periodic_warmup_prompt=row.periodic_warmup_prompt,
+            periodic_warmup_target_scope=row.periodic_warmup_target_scope,
             weekly_pace_working_days=row.weekly_pace_working_days,
         )
 

@@ -131,6 +131,11 @@ def _dashboard_settings_response(settings) -> DashboardSettingsResponse:
         limit_warmup_prompt=settings.limit_warmup_prompt,
         limit_warmup_cooldown_seconds=settings.limit_warmup_cooldown_seconds,
         limit_warmup_min_available_percent=settings.limit_warmup_min_available_percent,
+        periodic_warmup_enabled=settings.periodic_warmup_enabled,
+        periodic_warmup_interval_hours=settings.periodic_warmup_interval_hours,
+        periodic_warmup_model=settings.periodic_warmup_model,
+        periodic_warmup_prompt=settings.periodic_warmup_prompt,
+        periodic_warmup_target_scope=settings.periodic_warmup_target_scope,
         weekly_pace_working_days=settings.weekly_pace_working_days,
     )
 
@@ -541,6 +546,21 @@ async def update_settings(
                     if payload.limit_warmup_min_available_percent is not None
                     else current.limit_warmup_min_available_percent
                 ),
+                periodic_warmup_enabled=(
+                    payload.periodic_warmup_enabled
+                    if payload.periodic_warmup_enabled is not None
+                    else current.periodic_warmup_enabled
+                ),
+                periodic_warmup_interval_hours=(
+                    payload.periodic_warmup_interval_hours
+                    if payload.periodic_warmup_interval_hours is not None
+                    else current.periodic_warmup_interval_hours
+                ),
+                periodic_warmup_model=payload.periodic_warmup_model or current.periodic_warmup_model,
+                periodic_warmup_prompt=payload.periodic_warmup_prompt or current.periodic_warmup_prompt,
+                periodic_warmup_target_scope=(
+                    payload.periodic_warmup_target_scope or current.periodic_warmup_target_scope
+                ),
                 weekly_pace_working_days=(
                     payload.weekly_pace_working_days
                     if payload.weekly_pace_working_days is not None
@@ -583,6 +603,11 @@ async def update_settings(
             "limit_warmup_prompt",
             "limit_warmup_cooldown_seconds",
             "limit_warmup_min_available_percent",
+            "periodic_warmup_enabled",
+            "periodic_warmup_interval_hours",
+            "periodic_warmup_model",
+            "periodic_warmup_prompt",
+            "periodic_warmup_target_scope",
             "weekly_pace_working_days",
         )
         if getattr(current, field_name) != getattr(updated, field_name)

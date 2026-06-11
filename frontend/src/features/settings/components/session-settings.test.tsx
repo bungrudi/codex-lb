@@ -11,6 +11,11 @@ const LIMIT_WARMUP_DEFAULTS = {
   limitWarmupPrompt: "Say OK.",
   limitWarmupCooldownSeconds: 3600,
   limitWarmupMinAvailablePercent: 100,
+  periodicWarmupEnabled: false,
+  periodicWarmupIntervalHours: 6,
+  periodicWarmupModel: "auto",
+  periodicWarmupPrompt: "Say OK.",
+  periodicWarmupTargetScope: "all_active" as const,
 };
 const ADDITIONAL_QUOTA_DEFAULTS = {
   additionalQuotaRoutingPolicies: {},

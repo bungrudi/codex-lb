@@ -54,6 +54,16 @@ class AccountLimitWarmupStatus(DashboardModel):
     error_message: str | None = None
 
 
+class AccountPeriodicWarmupStatus(DashboardModel):
+    status: str
+    model: str
+    attempted_at: datetime
+    completed_at: datetime | None = None
+    request_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class AccountAdditionalWindow(DashboardModel):
     used_percent: float
     reset_at: int | None = None
@@ -105,6 +115,8 @@ class AccountSummary(DashboardModel):
     auth: AccountAuthStatus | None = None
     limit_warmup_enabled: bool = False
     limit_warmup: AccountLimitWarmupStatus | None = None
+    periodic_warmup_enabled: bool = False
+    periodic_warmup: AccountPeriodicWarmupStatus | None = None
     # True when another account row in the same response shares this real email,
     # ChatGPT account identity, and workspace slot.
     # Operators see this after a token-invalidation cascade where re-adding
@@ -175,6 +187,15 @@ class AccountLimitWarmupUpdateRequest(DashboardModel):
 
 
 class AccountLimitWarmupUpdateResponse(DashboardModel):
+    status: str
+    enabled: bool
+
+
+class AccountPeriodicWarmupUpdateRequest(DashboardModel):
+    enabled: bool
+
+
+class AccountPeriodicWarmupUpdateResponse(DashboardModel):
     status: str
     enabled: bool
 

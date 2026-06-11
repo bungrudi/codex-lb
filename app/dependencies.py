@@ -28,6 +28,7 @@ from app.modules.firewall.repository import FirewallRepository
 from app.modules.firewall.service import FirewallRepositoryPort, FirewallService
 from app.modules.limit_warmup.repository import LimitWarmupRepository
 from app.modules.oauth.service import OauthService
+from app.modules.periodic_warmup.repository import PeriodicWarmupRepository
 from app.modules.proxy.repo_bundle import ProxyRepositories
 from app.modules.proxy.service import ProxyService
 from app.modules.proxy.sticky_repository import StickySessionsRepository
@@ -144,11 +145,13 @@ def get_accounts_context(
     usage_repository = UsageRepository(session)
     additional_usage_repository = AdditionalUsageRepository(session)
     limit_warmup_repository = LimitWarmupRepository(session)
+    periodic_warmup_repository = PeriodicWarmupRepository(session)
     service = AccountsService(
         repository,
         usage_repository,
         additional_usage_repository,
         limit_warmup_repository,
+        periodic_warmup_repository,
         auth_manager=AuthManager(repository, refresh_repo_factory=_accounts_repo_context),
     )
     return AccountsContext(

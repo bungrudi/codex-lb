@@ -46,6 +46,16 @@ export const AccountLimitWarmupStatusSchema = z.object({
   errorMessage: z.string().nullable().optional(),
 });
 
+export const AccountPeriodicWarmupStatusSchema = z.object({
+  status: z.string(),
+  model: z.string(),
+  attemptedAt: z.string().datetime({ offset: true }),
+  completedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  requestId: z.string().nullable().optional(),
+  errorCode: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+});
+
 export const AccountAdditionalWindowSchema = z.object({
   usedPercent: z.number(),
   resetAt: z.number().nullable().optional(),
@@ -95,6 +105,8 @@ export const AccountSummarySchema = z.object({
   additionalQuotas: z.array(AccountAdditionalQuotaSchema).default([]),
   limitWarmupEnabled: z.boolean().default(false),
   limitWarmup: AccountLimitWarmupStatusSchema.nullable().optional(),
+  periodicWarmupEnabled: z.boolean().optional(),
+  periodicWarmup: AccountPeriodicWarmupStatusSchema.nullable().optional(),
   isEmailDuplicate: z.boolean().optional(),
 });
 
@@ -202,6 +214,15 @@ export const AccountLimitWarmupUpdateRequestSchema = z.object({
 });
 
 export const AccountLimitWarmupUpdateResponseSchema = z.object({
+  status: z.string(),
+  enabled: z.boolean(),
+});
+
+export const AccountPeriodicWarmupUpdateRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export const AccountPeriodicWarmupUpdateResponseSchema = z.object({
   status: z.string(),
   enabled: z.boolean(),
 });

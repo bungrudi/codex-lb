@@ -40,6 +40,7 @@ export function AccountsPage() {
     setAliasMutation,
     probeMutation,
     limitWarmupMutation,
+    periodicWarmupMutation,
     updateMutation,
     deleteMutation,
     routingPolicyMutation,
@@ -104,6 +105,7 @@ export function AccountsPage() {
     setAliasMutation.isPending ||
     probeMutation.isPending ||
     limitWarmupMutation.isPending ||
+    periodicWarmupMutation.isPending ||
     deleteMutation.isPending ||
     routingPolicyMutation.isPending ||
     exportAuthMutation.isPending ||
@@ -117,6 +119,7 @@ export function AccountsPage() {
     getErrorMessageOrNull(setAliasMutation.error) ||
     getErrorMessageOrNull(probeMutation.error) ||
     getErrorMessageOrNull(limitWarmupMutation.error) ||
+    getErrorMessageOrNull(periodicWarmupMutation.error) ||
     getErrorMessageOrNull(deleteMutation.error) ||
     getErrorMessageOrNull(routingPolicyMutation.error) ||
     getErrorMessageOrNull(exportAuthMutation.error) ||
@@ -176,6 +179,9 @@ export function AccountsPage() {
             }}
             onLimitWarmupChange={(accountId, enabled) =>
               void limitWarmupMutation.mutateAsync({ accountId, enabled })
+            }
+            onPeriodicWarmupChange={(accountId, enabled) =>
+              void periodicWarmupMutation.mutateAsync({ accountId, enabled })
             }
             onRoutingPolicyChange={(accountId, routingPolicy) =>
               void routingPolicyMutation.mutateAsync({

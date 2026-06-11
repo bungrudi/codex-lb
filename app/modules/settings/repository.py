@@ -50,6 +50,11 @@ class SettingsRepository:
             limit_warmup_prompt="Say OK.",
             limit_warmup_cooldown_seconds=3600,
             limit_warmup_min_available_percent=100.0,
+            periodic_warmup_enabled=False,
+            periodic_warmup_interval_hours=6,
+            periodic_warmup_model="auto",
+            periodic_warmup_prompt="Say OK.",
+            periodic_warmup_target_scope="all_active",
             weekly_pace_working_days="0,1,2,3,4,5,6",
         )
         self._session.add(row)
@@ -95,6 +100,11 @@ class SettingsRepository:
         limit_warmup_prompt: str | None = None,
         limit_warmup_cooldown_seconds: int | None = None,
         limit_warmup_min_available_percent: float | None = None,
+        periodic_warmup_enabled: bool | None = None,
+        periodic_warmup_interval_hours: int | None = None,
+        periodic_warmup_model: str | None = None,
+        periodic_warmup_prompt: str | None = None,
+        periodic_warmup_target_scope: str | None = None,
         weekly_pace_working_days: str | None = None,
     ) -> DashboardSettings:
         settings = await self.get_or_create()
@@ -157,6 +167,16 @@ class SettingsRepository:
             settings.limit_warmup_cooldown_seconds = limit_warmup_cooldown_seconds
         if limit_warmup_min_available_percent is not None:
             settings.limit_warmup_min_available_percent = limit_warmup_min_available_percent
+        if periodic_warmup_enabled is not None:
+            settings.periodic_warmup_enabled = periodic_warmup_enabled
+        if periodic_warmup_interval_hours is not None:
+            settings.periodic_warmup_interval_hours = periodic_warmup_interval_hours
+        if periodic_warmup_model is not None:
+            settings.periodic_warmup_model = periodic_warmup_model
+        if periodic_warmup_prompt is not None:
+            settings.periodic_warmup_prompt = periodic_warmup_prompt
+        if periodic_warmup_target_scope is not None:
+            settings.periodic_warmup_target_scope = periodic_warmup_target_scope
         if additional_quota_routing_policies_json is not None:
             settings.additional_quota_routing_policies_json = additional_quota_routing_policies_json
         if weekly_pace_working_days is not None:

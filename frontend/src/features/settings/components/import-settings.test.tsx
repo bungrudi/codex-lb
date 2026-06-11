@@ -87,6 +87,11 @@ describe("ImportSettings", () => {
       limitWarmupPrompt: settings.limitWarmupPrompt,
       limitWarmupCooldownSeconds: settings.limitWarmupCooldownSeconds,
       limitWarmupMinAvailablePercent: settings.limitWarmupMinAvailablePercent,
+      periodicWarmupEnabled: settings.periodicWarmupEnabled,
+      periodicWarmupIntervalHours: settings.periodicWarmupIntervalHours,
+      periodicWarmupModel: settings.periodicWarmupModel,
+      periodicWarmupPrompt: settings.periodicWarmupPrompt,
+      periodicWarmupTargetScope: settings.periodicWarmupTargetScope,
       weeklyPaceWorkingDays: settings.weeklyPaceWorkingDays,
     });
   });

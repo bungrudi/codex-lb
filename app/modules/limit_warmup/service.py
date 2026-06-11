@@ -447,28 +447,7 @@ class LimitWarmupService:
                     )
 
     def _resolve_model(self, configured_model: str, account: Account) -> str | None:
-        normalized = configured_model.strip()
-        if normalized and normalized.lower() != "auto":
-            return normalized
-
-        candidates: list[tuple[float, str]] = []
-        for model in get_model_registry().get_models_with_fallback().values():
-            if not model.supported_in_api:
-                continue
-            if model.input_modalities and "text" not in {modality.lower() for modality in model.input_modalities}:
-                continue
-            if model.available_in_plans and not account_plan_matches_allowed(
-                account.plan_type, model.available_in_plans
-            ):
-                continue
-            resolved_price = get_pricing_for_model(model.slug)
-            if resolved_price is None:
-                continue
-            _, price = resolved_price
-            candidates.append((price.input_per_1m + price.output_per_1m, model.slug))
-        if not candidates:
-            return None
-        return min(candidates, key=lambda item: (item[0], item[1]))[1]
+        return resolve_warmup_model(configured_model, account)
 
     async def _send_warmup(
         self,
@@ -595,6 +574,29 @@ class LimitWarmupService:
 @dataclass(frozen=True, slots=True)
 class _WarmupCandidate:
     reset_at: int
+
+
+def resolve_warmup_model(configured_model: str, account: Account) -> str | None:
+    normalized = configured_model.strip()
+    if normalized and normalized.lower() != "auto":
+        return normalized
+
+    candidates: list[tuple[float, str]] = []
+    for model in get_model_registry().get_models_with_fallback().values():
+        if not model.supported_in_api:
+            continue
+        if model.input_modalities and "text" not in {modality.lower() for modality in model.input_modalities}:
+            continue
+        if model.available_in_plans and not account_plan_matches_allowed(account.plan_type, model.available_in_plans):
+            continue
+        resolved_price = get_pricing_for_model(model.slug)
+        if resolved_price is None:
+            continue
+        _, price = resolved_price
+        candidates.append((price.input_per_1m + price.output_per_1m, model.slug))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: (item[0], item[1]))[1]
 
 
 def _selected_windows(value: str) -> tuple[str, ...]:

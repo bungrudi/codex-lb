@@ -19,6 +19,8 @@ from app.modules.accounts.schemas import (
     AccountLimitWarmupUpdateResponse,
     AccountOpenCodeAuthExportResponse,
     AccountPauseResponse,
+    AccountPeriodicWarmupUpdateRequest,
+    AccountPeriodicWarmupUpdateResponse,
     AccountProbeRequest,
     AccountProbeResponse,
     AccountReactivateResponse,
@@ -252,6 +254,21 @@ async def update_account_limit_warmup(
     if not success:
         raise DashboardNotFoundError("Account not found", code="account_not_found")
     return AccountLimitWarmupUpdateResponse(
+        status="enabled" if payload.enabled else "disabled",
+        enabled=payload.enabled,
+    )
+
+
+@router.put("/{account_id}/periodic-warmup", response_model=AccountPeriodicWarmupUpdateResponse)
+async def update_account_periodic_warmup(
+    account_id: str,
+    payload: AccountPeriodicWarmupUpdateRequest,
+    context: AccountsContext = Depends(get_accounts_context),
+) -> AccountPeriodicWarmupUpdateResponse:
+    success = await context.service.set_periodic_warmup_enabled(account_id, payload.enabled)
+    if not success:
+        raise DashboardNotFoundError("Account not found", code="account_not_found")
+    return AccountPeriodicWarmupUpdateResponse(
         status="enabled" if payload.enabled else "disabled",
         enabled=payload.enabled,
     )

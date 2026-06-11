@@ -17,6 +17,7 @@ import { buildSettingsUpdateRequest } from "@/features/settings/payload";
 import type {
   AdditionalQuotaRoutingPolicy,
   DashboardSettings,
+  PeriodicWarmupTargetScope,
   SettingsUpdateRequest,
 } from "@/features/settings/schemas";
 import { formatCompactAccountId } from "@/utils/account-identifiers";
@@ -25,6 +26,8 @@ import { isSingleAccountRoutingSelectable } from "@/utils/account-status";
 const WARMUP_MODEL_MAX_LENGTH = 128;
 const LIMIT_WARMUP_MODEL_MAX_LENGTH = 128;
 const LIMIT_WARMUP_PROMPT_MAX_LENGTH = 512;
+const PERIODIC_WARMUP_MODEL_MAX_LENGTH = 128;
+const PERIODIC_WARMUP_PROMPT_MAX_LENGTH = 512;
 const WEEKDAYS = [
   { value: 0, label: "Mon" },
   { value: 1, label: "Tue" },
@@ -89,6 +92,11 @@ export function RoutingSettings({
   const [limitWarmupModel, setLimitWarmupModel] = useState(settings.limitWarmupModel);
   const [limitWarmupPrompt, setLimitWarmupPrompt] = useState(settings.limitWarmupPrompt);
   const [limitWarmupCooldown, setLimitWarmupCooldown] = useState(String(settings.limitWarmupCooldownSeconds));
+  const [periodicWarmupModel, setPeriodicWarmupModel] = useState(settings.periodicWarmupModel);
+  const [periodicWarmupPrompt, setPeriodicWarmupPrompt] = useState(settings.periodicWarmupPrompt);
+  const [periodicWarmupIntervalHours, setPeriodicWarmupIntervalHours] = useState(
+    String(settings.periodicWarmupIntervalHours),
+  );
   const [additionalQuotaKey, setAdditionalQuotaKey] = useState("");
   const [additionalQuotaPolicy, setAdditionalQuotaPolicy] =
     useState<AdditionalQuotaRoutingPolicy>("inherit");
@@ -134,6 +142,19 @@ export function RoutingSettings({
     limitWarmupPrompt.trim().length > 0 &&
     limitWarmupPrompt.trim().length <= LIMIT_WARMUP_PROMPT_MAX_LENGTH &&
     limitWarmupCooldownValid;
+  const parsedPeriodicWarmupIntervalHours = Number(periodicWarmupIntervalHours);
+  const periodicWarmupIntervalValid =
+    Number.isInteger(parsedPeriodicWarmupIntervalHours) && parsedPeriodicWarmupIntervalHours >= 1;
+  const periodicWarmupFieldsChanged =
+    periodicWarmupModel.trim() !== settings.periodicWarmupModel ||
+    periodicWarmupPrompt.trim() !== settings.periodicWarmupPrompt ||
+    (periodicWarmupIntervalValid && parsedPeriodicWarmupIntervalHours !== settings.periodicWarmupIntervalHours);
+  const periodicWarmupFieldsValid =
+    periodicWarmupModel.trim().length > 0 &&
+    periodicWarmupModel.trim().length <= PERIODIC_WARMUP_MODEL_MAX_LENGTH &&
+    periodicWarmupPrompt.trim().length > 0 &&
+    periodicWarmupPrompt.trim().length <= PERIODIC_WARMUP_PROMPT_MAX_LENGTH &&
+    periodicWarmupIntervalValid;
 
   const parsedRelativeAvailabilityPower = Number.parseFloat(relativeAvailabilityPower);
   const relativeAvailabilityPowerValid =
@@ -736,12 +757,92 @@ export function RoutingSettings({
                 size="sm"
                 variant="outline"
                 className="h-8 text-xs sm:w-24"
+                aria-label="Save limit warm-up"
                 disabled={busy || !limitWarmupFieldsChanged || !limitWarmupFieldsValid}
                 onClick={() =>
                   void save({
                     limitWarmupModel: limitWarmupModel.trim(),
                     limitWarmupPrompt: limitWarmupPrompt.trim(),
                     limitWarmupCooldownSeconds: parsedLimitWarmupCooldown,
+                  })
+                }
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3 p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Zap className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-medium">Periodic warm-up</p>
+                  <p className="text-xs text-muted-foreground">Send a tiny message to due accounts every configured number of hours.</p>
+                </div>
+              </div>
+              <Switch
+                aria-label="Enable periodic warm-up"
+                checked={settings.periodicWarmupEnabled}
+                disabled={busy}
+                onCheckedChange={(checked) => save({ periodicWarmupEnabled: checked })}
+              />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-[10rem_7rem_minmax(0,1fr)]">
+              <Select
+                value={settings.periodicWarmupTargetScope}
+                onValueChange={(value) => save({ periodicWarmupTargetScope: value as PeriodicWarmupTargetScope })}
+              >
+                <SelectTrigger className="h-8 text-xs" disabled={busy} aria-label="Periodic warm-up target scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="all_active">All active</SelectItem>
+                  <SelectItem value="account_opt_in">Opted-in only</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={periodicWarmupIntervalHours}
+                disabled={busy}
+                onChange={(event) => setPeriodicWarmupIntervalHours(event.target.value)}
+                className="h-8 text-xs"
+                aria-label="Periodic warm-up interval hours"
+              />
+              <Input
+                value={periodicWarmupModel}
+                disabled={busy}
+                maxLength={PERIODIC_WARMUP_MODEL_MAX_LENGTH}
+                onChange={(event) => setPeriodicWarmupModel(event.target.value)}
+                className="h-8 text-xs"
+                aria-label="Periodic warm-up model"
+              />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={periodicWarmupPrompt}
+                disabled={busy}
+                maxLength={PERIODIC_WARMUP_PROMPT_MAX_LENGTH}
+                onChange={(event) => setPeriodicWarmupPrompt(event.target.value)}
+                className="h-8 text-xs"
+                aria-label="Periodic warm-up prompt"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs sm:w-24"
+                aria-label="Save periodic warm-up"
+                disabled={busy || !periodicWarmupFieldsChanged || !periodicWarmupFieldsValid}
+                onClick={() =>
+                  void save({
+                    periodicWarmupIntervalHours: parsedPeriodicWarmupIntervalHours,
+                    periodicWarmupModel: periodicWarmupModel.trim(),
+                    periodicWarmupPrompt: periodicWarmupPrompt.trim(),
                   })
                 }
               >

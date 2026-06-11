@@ -8,6 +8,8 @@ import {
   AccountImportResponseSchema,
   AccountLimitWarmupUpdateRequestSchema,
   AccountLimitWarmupUpdateResponseSchema,
+  AccountPeriodicWarmupUpdateRequestSchema,
+  AccountPeriodicWarmupUpdateResponseSchema,
   AccountUpdateRequestSchema,
   AccountsResponseSchema,
   AccountRoutingPolicyUpdateRequestSchema,
@@ -78,6 +80,15 @@ export function updateAccountLimitWarmup(accountId: string, enabled: boolean) {
   return put(
     `${ACCOUNTS_BASE_PATH}/${encodeURIComponent(accountId)}/limit-warmup`,
     AccountLimitWarmupUpdateResponseSchema,
+    { body: payload },
+  );
+}
+
+export function updateAccountPeriodicWarmup(accountId: string, enabled: boolean) {
+  const payload = AccountPeriodicWarmupUpdateRequestSchema.parse({ enabled });
+  return put(
+    `${ACCOUNTS_BASE_PATH}/${encodeURIComponent(accountId)}/periodic-warmup`,
+    AccountPeriodicWarmupUpdateResponseSchema,
     { body: payload },
   );
 }

@@ -36,6 +36,11 @@ describe("DashboardSettingsSchema", () => {
       limitWarmupPrompt: "Say OK.",
       limitWarmupCooldownSeconds: 3600,
       limitWarmupMinAvailablePercent: 100,
+      periodicWarmupEnabled: true,
+      periodicWarmupIntervalHours: 12,
+      periodicWarmupModel: "gpt-5.4-mini",
+      periodicWarmupPrompt: "Say OK periodically.",
+      periodicWarmupTargetScope: "account_opt_in",
     });
 
     expect(parsed.stickyThreadsEnabled).toBe(true);
@@ -57,6 +62,9 @@ describe("DashboardSettingsSchema", () => {
     expect(parsed.apiKeyAuthEnabled).toBe(true);
     expect(parsed.limitWarmupEnabled).toBe(false);
     expect(parsed.limitWarmupWindows).toBe("both");
+    expect(parsed.periodicWarmupEnabled).toBe(true);
+    expect(parsed.periodicWarmupIntervalHours).toBe(12);
+    expect(parsed.periodicWarmupTargetScope).toBe("account_opt_in");
   });
 
   it("parses legacy settings payload and applies defaults for missing routing fields", () => {
@@ -82,6 +90,11 @@ describe("DashboardSettingsSchema", () => {
     expect(parsed.limitWarmupPrompt).toBe("Say OK.");
     expect(parsed.limitWarmupCooldownSeconds).toBe(3600);
     expect(parsed.limitWarmupMinAvailablePercent).toBe(100);
+    expect(parsed.periodicWarmupEnabled).toBe(false);
+    expect(parsed.periodicWarmupIntervalHours).toBe(6);
+    expect(parsed.periodicWarmupModel).toBe("auto");
+    expect(parsed.periodicWarmupPrompt).toBe("Say OK.");
+    expect(parsed.periodicWarmupTargetScope).toBe("all_active");
     expect(parsed.weeklyPaceWorkingDays).toBe("0,1,2,3,4,5,6");
     expect(parsed.stickyReallocationPrimaryBudgetThresholdPct).toBe(95);
     expect(parsed.stickyReallocationSecondaryBudgetThresholdPct).toBe(95);
@@ -155,6 +168,11 @@ describe("SettingsUpdateRequestSchema", () => {
       limitWarmupPrompt: "Say OK.",
       limitWarmupCooldownSeconds: 7200,
       limitWarmupMinAvailablePercent: 99,
+      periodicWarmupEnabled: true,
+      periodicWarmupIntervalHours: 12,
+      periodicWarmupModel: " gpt-5.4-mini ",
+      periodicWarmupPrompt: " Say OK periodically. ",
+      periodicWarmupTargetScope: "account_opt_in",
     });
 
     expect(parsed.openaiCacheAffinityMaxAgeSeconds).toBe(120);
@@ -176,6 +194,11 @@ describe("SettingsUpdateRequestSchema", () => {
     expect(parsed.apiKeyAuthEnabled).toBe(false);
     expect(parsed.limitWarmupEnabled).toBe(true);
     expect(parsed.limitWarmupWindows).toBe("primary");
+    expect(parsed.periodicWarmupEnabled).toBe(true);
+    expect(parsed.periodicWarmupIntervalHours).toBe(12);
+    expect(parsed.periodicWarmupModel).toBe("gpt-5.4-mini");
+    expect(parsed.periodicWarmupPrompt).toBe("Say OK periodically.");
+    expect(parsed.periodicWarmupTargetScope).toBe("account_opt_in");
   });
 
   it("accepts long session lifetimes above 30 days", () => {

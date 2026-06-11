@@ -91,6 +91,12 @@ _MANUAL_DRIFT_INDEX_REQUIREMENTS: dict[str, frozenset[str]] = {
             "idx_account_limit_warmups_status_attempted",
         }
     ),
+    "account_periodic_warmups": frozenset(
+        {
+            "idx_account_periodic_warmups_account_attempted",
+            "idx_account_periodic_warmups_status_attempted",
+        }
+    ),
     "api_keys": frozenset({"idx_api_keys_name"}),
 }
 _SQLITE_FLOAT_TYPE_COMPAT_COLUMNS = frozenset(

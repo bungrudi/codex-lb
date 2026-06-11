@@ -126,6 +126,8 @@ export function createAccountSummary(
 		},
 		limitWarmupEnabled: false,
 		limitWarmup: null,
+		periodicWarmupEnabled: false,
+		periodicWarmup: null,
 		...overrides,
 	});
 }
@@ -445,6 +447,11 @@ export function createDashboardSettings(
 		limitWarmupPrompt: "Say OK.",
 		limitWarmupCooldownSeconds: 3600,
 		limitWarmupMinAvailablePercent: 100,
+		periodicWarmupEnabled: false,
+		periodicWarmupIntervalHours: 6,
+		periodicWarmupModel: "auto",
+		periodicWarmupPrompt: "Say OK.",
+		periodicWarmupTargetScope: "all_active",
 		...overrides,
 	});
 }

@@ -104,6 +104,12 @@ class Account(Base):
         server_default=false(),
         nullable=False,
     )
+    periodic_warmup_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
     security_work_authorized: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
@@ -122,6 +128,11 @@ class Account(Base):
     )
     limit_warmups: Mapped[list["AccountLimitWarmup"]] = relationship(
         "AccountLimitWarmup",
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
+    periodic_warmups: Mapped[list["AccountPeriodicWarmup"]] = relationship(
+        "AccountPeriodicWarmup",
         back_populates="account",
         cascade="all, delete-orphan",
     )
@@ -217,6 +228,12 @@ class RequestLog(Base):
     upstream_proxy_endpoint_id: Mapped[str | None] = mapped_column(String, nullable=True)
     upstream_proxy_fallback_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     upstream_proxy_fail_closed_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_provider_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_provider_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_route_public_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_route_endpoint: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_fallback_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    external_fallback_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     account: Mapped[Account | None] = relationship(
         "Account",
         back_populates="request_logs",
@@ -352,6 +369,118 @@ class AccountLimitWarmup(Base):
             "reset_at",
             name="uq_account_limit_warmups_account_window_reset",
         ),
+    )
+
+
+class AccountPeriodicWarmup(Base):
+    __tablename__ = "account_periodic_warmups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    claim_key: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    account: Mapped[Account] = relationship(
+        "Account",
+        back_populates="periodic_warmups",
+    )
+
+    __table_args__ = (UniqueConstraint("claim_key", name="uq_account_periodic_warmups_claim_key"),)
+
+
+class ExternalProvider(Base):
+    __tablename__ = "external_providers"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(
+        String,
+        default="openai_compatible",
+        server_default=text("'openai_compatible'"),
+        nullable=False,
+    )
+    base_url: Mapped[str] = mapped_column(String, nullable=False)
+    api_key_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    api_key_env: Mapped[str | None] = mapped_column(String, nullable=True)
+    default_headers_json: Mapped[str] = mapped_column(Text, default="{}", server_default=text("'{}'"), nullable=False)
+    timeout_seconds: Mapped[float] = mapped_column(Float, default=600.0, server_default=text("600.0"), nullable=False)
+    stream_idle_timeout_seconds: Mapped[float] = mapped_column(
+        Float,
+        default=600.0,
+        server_default=text("600.0"),
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    allow_insecure_base_url: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    routes: Mapped[list["ExternalModelRoute"]] = relationship(
+        "ExternalModelRoute",
+        back_populates="provider",
+        cascade="all, delete-orphan",
+    )
+
+
+class ExternalModelRoute(Base):
+    __tablename__ = "external_model_routes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    public_model: Mapped[str] = mapped_column(String, nullable=False)
+    provider_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("external_providers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_model: Mapped[str] = mapped_column(String, nullable=False)
+    endpoints_json: Mapped[str] = mapped_column(Text, nullable=False)
+    request_overrides_json: Mapped[str] = mapped_column(Text, default="{}", server_default=text("'{}'"), nullable=False)
+    strip_request_fields_json: Mapped[str] = mapped_column(
+        Text,
+        default="[]",
+        server_default=text("'[]'"),
+        nullable=False,
+    )
+    preserve_public_model: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    fallback_to_codex_pool: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    pricing_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    provider: Mapped[ExternalProvider] = relationship("ExternalProvider", back_populates="routes")
+
+    __table_args__ = (
+        Index("idx_external_model_routes_public_model", "public_model", "is_active"),
+        Index("idx_external_model_routes_provider", "provider_id", "is_active"),
     )
 
 
@@ -559,6 +688,36 @@ class DashboardSettings(Base):
         String,
         default="0,1,2,3,4,5,6",
         server_default=text("'0,1,2,3,4,5,6'"),
+        nullable=False,
+    )
+    periodic_warmup_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
+    periodic_warmup_interval_hours: Mapped[int] = mapped_column(
+        Integer,
+        default=6,
+        server_default=text("6"),
+        nullable=False,
+    )
+    periodic_warmup_model: Mapped[str] = mapped_column(
+        String,
+        default="auto",
+        server_default=text("'auto'"),
+        nullable=False,
+    )
+    periodic_warmup_prompt: Mapped[str] = mapped_column(
+        Text,
+        default="Say OK.",
+        server_default=text("'Say OK.'"),
+        nullable=False,
+    )
+    periodic_warmup_target_scope: Mapped[str] = mapped_column(
+        String,
+        default="all_active",
+        server_default=text("'all_active'"),
         nullable=False,
     )
     warmup_model: Mapped[str] = mapped_column(
@@ -1087,6 +1246,16 @@ Index(
     "idx_account_limit_warmups_account_attempted", AccountLimitWarmup.account_id, AccountLimitWarmup.attempted_at.desc()
 )
 Index("idx_account_limit_warmups_status_attempted", AccountLimitWarmup.status, AccountLimitWarmup.attempted_at.desc())
+Index(
+    "idx_account_periodic_warmups_account_attempted",
+    AccountPeriodicWarmup.account_id,
+    AccountPeriodicWarmup.attempted_at.desc(),
+)
+Index(
+    "idx_account_periodic_warmups_status_attempted",
+    AccountPeriodicWarmup.status,
+    AccountPeriodicWarmup.attempted_at.desc(),
+)
 Index("idx_api_key_accounts_account_id", ApiKeyAccountAssignment.account_id)
 Index("idx_api_key_limits_key_id", ApiKeyLimit.api_key_id)
 Index("idx_api_key_limits_reset_at", ApiKeyLimit.reset_at)

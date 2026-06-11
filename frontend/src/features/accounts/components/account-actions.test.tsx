@@ -22,6 +22,7 @@ describe("AccountActions", () => {
         onExportAuth={vi.fn()}
         onSecurityWorkAuthorizedChange={vi.fn()}
         onLimitWarmupChange={vi.fn()}
+        onPeriodicWarmupChange={vi.fn()}
         onRoutingPolicyChange={onRoutingPolicyChange}
       />,
     );
@@ -48,6 +49,7 @@ describe("AccountActions", () => {
         onExportAuth={vi.fn()}
         onSecurityWorkAuthorizedChange={vi.fn()}
         onLimitWarmupChange={vi.fn()}
+        onPeriodicWarmupChange={vi.fn()}
         onRoutingPolicyChange={vi.fn()}
       />,
     );
@@ -61,6 +63,35 @@ describe("AccountActions", () => {
     expect(
       screen.queryByRole("combobox", { name: "Routing policy" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("fires the per-account periodic warm-up callback", async () => {
+    const user = userEvent.setup();
+    const account = createAccountSummary({ periodicWarmupEnabled: false });
+    const onPeriodicWarmupChange = vi.fn();
+
+    render(
+      <AccountActions
+        account={account}
+        busy={false}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onProbe={vi.fn()}
+        onDelete={vi.fn()}
+        onReauth={vi.fn()}
+        onExportAuth={vi.fn()}
+        onSecurityWorkAuthorizedChange={vi.fn()}
+        onLimitWarmupChange={vi.fn()}
+        onPeriodicWarmupChange={onPeriodicWarmupChange}
+        onRoutingPolicyChange={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /enable periodic warm-up/i }),
+    );
+
+    expect(onPeriodicWarmupChange).toHaveBeenCalledWith(account.accountId, true);
   });
 
   it("fires the per-account probe callback for active accounts", async () => {
@@ -80,6 +111,7 @@ describe("AccountActions", () => {
         onExportAuth={vi.fn()}
         onSecurityWorkAuthorizedChange={vi.fn()}
         onLimitWarmupChange={vi.fn()}
+        onPeriodicWarmupChange={vi.fn()}
         onRoutingPolicyChange={vi.fn()}
       />,
     );
@@ -109,6 +141,7 @@ describe("AccountActions", () => {
           onExportAuth={vi.fn()}
           onSecurityWorkAuthorizedChange={vi.fn()}
           onLimitWarmupChange={vi.fn()}
+          onPeriodicWarmupChange={vi.fn()}
           onRoutingPolicyChange={vi.fn()}
         />,
       );

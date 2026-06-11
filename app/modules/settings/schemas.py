@@ -60,6 +60,11 @@ class DashboardSettingsResponse(DashboardModel):
     limit_warmup_prompt: str = Field(min_length=1, max_length=512)
     limit_warmup_cooldown_seconds: int = Field(ge=60)
     limit_warmup_min_available_percent: float = Field(gt=0.0, le=100.0)
+    periodic_warmup_enabled: bool
+    periodic_warmup_interval_hours: int = Field(ge=1)
+    periodic_warmup_model: str = Field(min_length=1, max_length=128)
+    periodic_warmup_prompt: str = Field(min_length=1, max_length=512)
+    periodic_warmup_target_scope: str = Field(pattern=r"^(all_active|account_opt_in)$")
     weekly_pace_working_days: str = _DEFAULT_WEEKLY_PACE_WORKING_DAYS
     additional_quota_routing_policies: dict[str, str] = Field(default_factory=dict)
     additional_quota_policies: list[AdditionalQuotaPolicy] = Field(default_factory=list)
@@ -100,16 +105,21 @@ class DashboardSettingsUpdateRequest(DashboardModel):
     limit_warmup_prompt: str | None = Field(default=None, min_length=1, max_length=512)
     limit_warmup_cooldown_seconds: int | None = Field(default=None, ge=60)
     limit_warmup_min_available_percent: float | None = Field(default=None, gt=0.0, le=100.0)
+    periodic_warmup_enabled: bool | None = None
+    periodic_warmup_interval_hours: int | None = Field(default=None, ge=1)
+    periodic_warmup_model: str | None = Field(default=None, min_length=1, max_length=128)
+    periodic_warmup_prompt: str | None = Field(default=None, min_length=1, max_length=512)
+    periodic_warmup_target_scope: str | None = Field(default=None, pattern=r"^(all_active|account_opt_in)$")
     weekly_pace_working_days: str | None = None
 
-    @field_validator("warmup_model")
+    @field_validator("warmup_model", "periodic_warmup_model", "periodic_warmup_prompt")
     @classmethod
-    def _normalize_warmup_model(cls, value: str | None) -> str | None:
+    def _normalize_non_blank_periodic_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
         if not normalized:
-            raise ValueError("warmup_model must not be blank")
+            raise ValueError("warmup text settings must not be blank")
         return normalized
 
     @field_validator("weekly_pace_working_days")
