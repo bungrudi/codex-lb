@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from typing import cast
 
 import pytest
 
@@ -105,7 +106,7 @@ async def test_v1_chat_completions_external_route_rewrites_model_and_bypasses_ac
     assert body["model"] == "gpt-5.3-codex"
     assert len(calls) == 1
     assert calls[0]["endpoint_path"] == "/chat/completions"
-    provider_payload = calls[0]["payload"]
+    provider_payload = cast(Mapping[str, JsonValue], calls[0]["payload"])
     assert provider_payload["model"] == "minimax/minimax-m3"
     assert provider_payload["messages"] == [{"role": "user", "content": "hi"}]
 
@@ -220,7 +221,8 @@ async def test_external_route_uses_enforced_public_model(async_client, monkeypat
 
     assert response.status_code == 200
     assert response.json()["model"] == "gpt-5.3-codex"
-    assert calls[0]["payload"]["model"] == "minimax/minimax-m3"
+    provider_payload = cast(Mapping[str, JsonValue], calls[0]["payload"])
+    assert provider_payload["model"] == "minimax/minimax-m3"
 
 
 @pytest.mark.asyncio
@@ -304,8 +306,9 @@ async def test_v1_responses_external_route_rewrites_non_stream_response(async_cl
     body = response.json()
     assert body["model"] == "gpt-5.3-codex"
     assert calls[0]["endpoint_path"] == "/responses"
-    assert calls[0]["payload"]["model"] == "minimax/minimax-m3"
-    assert calls[0]["payload"]["stream"] is False
+    provider_payload = cast(Mapping[str, JsonValue], calls[0]["payload"])
+    assert provider_payload["model"] == "minimax/minimax-m3"
+    assert provider_payload["stream"] is False
 
 
 @pytest.mark.asyncio
@@ -422,7 +425,7 @@ async def test_backend_codex_responses_computer_use_context_bridges_mcp_tools(as
         body = "\n".join([line async for line in response.aiter_lines()])
 
     assert len(calls) == 1
-    provider_payload = calls[0]["payload"]
+    provider_payload = cast(Mapping[str, JsonValue], calls[0]["payload"])
     assert calls[0]["endpoint_path"] == "/responses"
     tools = provider_payload["tools"]
     assert isinstance(tools, list)

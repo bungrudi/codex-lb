@@ -48,7 +48,7 @@ from app.core.errors import (
     response_failed_event,
 )
 from app.core.exceptions import ProxyAuthError, ProxyRateLimitError
-from app.core.external_providers.config import ExternalModelRouteConfig, ExternalProviderConfig
+from app.core.external_providers.config import ExternalModelRouteConfig, ExternalProviderConfig, ExternalRouteEndpoint
 from app.core.external_providers.mcp_bridge import (
     bridge_computer_use_mcp_provider_request,
     rewrite_computer_use_mcp_response_payload,
@@ -2626,7 +2626,7 @@ async def _stream_responses(
     forwarded_affinity_kind: str | None = None,
     forwarded_affinity_key: str | None = None,
     enforce_openai_sdk_contract: bool = True,
-    external_route_endpoint: str | None = "responses",
+    external_route_endpoint: ExternalRouteEndpoint | None = "responses",
 ) -> Response:
     apply_api_key_enforcement(payload, api_key)
     validate_model_access(api_key, payload.model)
@@ -3860,7 +3860,11 @@ async def _probe_external_provider_stream_startup(
     timeout_seconds: float,
 ) -> tuple[AsyncIterator[str], ExternalProviderError | None]:
     iterator = stream.__aiter__()
-    first_task = asyncio.create_task(anext(iterator))
+
+    async def _await_first() -> str:
+        return await anext(iterator)
+
+    first_task = asyncio.create_task(_await_first())
     try:
         first = await asyncio.wait_for(asyncio.shield(first_task), timeout=timeout_seconds)
     except StopAsyncIteration:

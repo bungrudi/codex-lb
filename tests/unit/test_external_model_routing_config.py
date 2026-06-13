@@ -13,27 +13,29 @@ from app.core.external_providers.config import (
 
 
 def test_external_provider_and_route_json_settings_parse() -> None:
-    settings = Settings(
-        external_providers_json=json.dumps(
-            {
-                "openrouter": {
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "api_key_env": "OPENROUTER_API_KEY",
-                    "default_headers": {"HTTP-Referer": "https://codex-lb.local"},
-                    "timeout_seconds": 120,
+    settings = Settings.model_validate(
+        {
+            "external_providers_json": json.dumps(
+                {
+                    "openrouter": {
+                        "base_url": "https://openrouter.ai/api/v1",
+                        "api_key_env": "OPENROUTER_API_KEY",
+                        "default_headers": {"HTTP-Referer": "https://codex-lb.local"},
+                        "timeout_seconds": 120,
+                    }
                 }
-            }
-        ),
-        external_model_routes_json=json.dumps(
-            {
-                "gpt-5.3-codex": {
-                    "provider_id": "openrouter",
-                    "target_model": "minimax/minimax-m3",
-                    "endpoints": ["chat.completions", "responses"],
-                    "strip_request_fields": ["service_tier"],
+            ),
+            "external_model_routes_json": json.dumps(
+                {
+                    "gpt-5.3-codex": {
+                        "provider_id": "openrouter",
+                        "target_model": "minimax/minimax-m3",
+                        "endpoints": ["chat.completions", "responses"],
+                        "strip_request_fields": ["service_tier"],
+                    }
                 }
-            }
-        ),
+            ),
+        }
     )
 
     provider = settings.external_providers_json["openrouter"]
@@ -52,11 +54,13 @@ def test_external_provider_and_route_json_settings_parse() -> None:
 
 def test_external_route_requires_known_provider() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        Settings(
-            external_providers_json=json.dumps({}),
-            external_model_routes_json=json.dumps(
-                {"gpt-5.3-codex": {"provider_id": "missing", "target_model": "minimax/minimax-m3"}}
-            ),
+        Settings.model_validate(
+            {
+                "external_providers_json": json.dumps({}),
+                "external_model_routes_json": json.dumps(
+                    {"gpt-5.3-codex": {"provider_id": "missing", "target_model": "minimax/minimax-m3"}}
+                ),
+            }
         )
 
     assert "references unknown provider" in str(exc_info.value)

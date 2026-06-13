@@ -5,20 +5,22 @@ from app.core.external_providers.resolver import ExternalRouteResolutionStatus, 
 
 
 def _settings() -> Settings:
-    return Settings(
-        external_providers_json={
-            "openrouter": {
-                "base_url": "https://openrouter.ai/api/v1",
-                "api_key_env": "OPENROUTER_API_KEY",
-            }
-        },
-        external_model_routes_json={
-            "gpt-5.3-codex": {
-                "provider_id": "openrouter",
-                "target_model": "minimax/minimax-m3",
-                "endpoints": ["chat.completions"],
-            }
-        },
+    return Settings.model_validate(
+        {
+            "external_providers_json": {
+                "openrouter": {
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "api_key_env": "OPENROUTER_API_KEY",
+                }
+            },
+            "external_model_routes_json": {
+                "gpt-5.3-codex": {
+                    "provider_id": "openrouter",
+                    "target_model": "minimax/minimax-m3",
+                    "endpoints": ["chat.completions"],
+                }
+            },
+        }
     )
 
 
@@ -52,21 +54,23 @@ def test_resolver_requires_provider_api_key_env() -> None:
 
 
 def test_resolver_rejects_disabled_provider() -> None:
-    settings = Settings(
-        external_providers_json={
-            "openrouter": {
-                "base_url": "https://openrouter.ai/api/v1",
-                "api_key_env": "OPENROUTER_API_KEY",
-                "enabled": False,
-            }
-        },
-        external_model_routes_json={
-            "gpt-5.3-codex": {
-                "provider_id": "openrouter",
-                "target_model": "minimax/minimax-m3",
-                "endpoints": ["chat.completions"],
-            }
-        },
+    settings = Settings.model_validate(
+        {
+            "external_providers_json": {
+                "openrouter": {
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "api_key_env": "OPENROUTER_API_KEY",
+                    "enabled": False,
+                }
+            },
+            "external_model_routes_json": {
+                "gpt-5.3-codex": {
+                    "provider_id": "openrouter",
+                    "target_model": "minimax/minimax-m3",
+                    "endpoints": ["chat.completions"],
+                }
+            },
+        }
     )
 
     result = resolve_external_model_route(

@@ -97,7 +97,7 @@ class ExternalModelRoutingService:
         next_default_headers = (
             payload.default_headers
             if payload.default_headers is not None
-            else _parse_json_object(row.default_headers_json)
+            else _parse_json_string_map(row.default_headers_json)
         )
         next_timeout_seconds = payload.timeout_seconds if payload.timeout_seconds is not None else row.timeout_seconds
         next_stream_idle_timeout_seconds = (

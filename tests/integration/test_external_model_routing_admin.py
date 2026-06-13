@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 import pytest
 from sqlalchemy import select
@@ -132,8 +133,9 @@ async def test_dashboard_managed_route_drives_proxy_without_restart(async_client
     assert response.json()["model"] == "gpt-5.3-codex"
     assert len(calls) == 1
     assert calls[0]["endpoint_path"] == "/chat/completions"
-    assert calls[0]["payload"]["model"] == "minimax/minimax-m3"
-    assert calls[0]["payload"]["messages"] == [{"role": "user", "content": "hi"}]
+    provider_payload = cast(Mapping[str, JsonValue], calls[0]["payload"])
+    assert provider_payload["model"] == "minimax/minimax-m3"
+    assert provider_payload["messages"] == [{"role": "user", "content": "hi"}]
 
 
 @pytest.mark.asyncio

@@ -451,7 +451,8 @@ def _external_websocket_effective_model(payload: Mapping[str, JsonValue], api_ke
         return resolve_model_alias(stripped_model) or stripped_model
     response = payload.get("response")
     if isinstance(response, Mapping):
-        nested_model = response.get("model")
+        nested_mapping = cast(Mapping[str, JsonValue], response)
+        nested_model = nested_mapping.get("model")
         if isinstance(nested_model, str) and nested_model.strip():
             stripped_model = nested_model.strip()
             return resolve_model_alias(stripped_model) or stripped_model

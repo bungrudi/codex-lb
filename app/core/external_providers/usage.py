@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from app.core.types import JsonValue
@@ -48,7 +49,7 @@ def extract_external_provider_usage(payload: JsonValue) -> ExternalProviderUsage
     )
 
 
-def _cached_tokens(usage: dict[str, JsonValue]) -> int | None:
+def _cached_tokens(usage: Mapping[str, JsonValue]) -> int | None:
     prompt_details = usage.get("prompt_tokens_details")
     if is_json_mapping(prompt_details):
         value = _int_value(prompt_details.get("cached_tokens"))
@@ -62,7 +63,7 @@ def _cached_tokens(usage: dict[str, JsonValue]) -> int | None:
     return None
 
 
-def _reasoning_tokens(usage: dict[str, JsonValue]) -> int | None:
+def _reasoning_tokens(usage: Mapping[str, JsonValue]) -> int | None:
     completion_details = usage.get("completion_tokens_details")
     if is_json_mapping(completion_details):
         value = _int_value(completion_details.get("reasoning_tokens"))

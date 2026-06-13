@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlparse
 
 from app.core.types import JsonValue
@@ -158,7 +158,9 @@ def build_external_model_route_config(
     )
 
 
-def parse_external_provider_configs(value: JsonValue) -> dict[str, ExternalProviderConfig]:
+def parse_external_provider_configs(
+    value: JsonValue | str | dict[str, object] | None,
+) -> dict[str, ExternalProviderConfig]:
     raw = _parse_json_object(value, field_name="external_providers_json")
     providers: dict[str, ExternalProviderConfig] = {}
     for provider_id, item in raw.items():
@@ -204,7 +206,9 @@ def parse_external_provider_configs(value: JsonValue) -> dict[str, ExternalProvi
     return providers
 
 
-def parse_external_model_route_configs(value: JsonValue) -> dict[str, ExternalModelRouteConfig]:
+def parse_external_model_route_configs(
+    value: JsonValue | str | dict[str, object] | None,
+) -> dict[str, ExternalModelRouteConfig]:
     raw = _parse_json_object(value, field_name="external_model_routes_json")
     routes: dict[str, ExternalModelRouteConfig] = {}
     for public_model_key, item in raw.items():
@@ -256,7 +260,11 @@ def validate_external_routes_reference_providers(
             raise ValueError(f"external route '{public_model}' references unknown provider '{route.provider_id}'")
 
 
-def _parse_json_object(value: JsonValue, *, field_name: str) -> dict[str, JsonValue]:
+def _parse_json_object(
+    value: JsonValue | str | dict[str, object] | None,
+    *,
+    field_name: str,
+) -> dict[str, JsonValue]:
     if value is None:
         return {}
     if isinstance(value, str):
@@ -330,17 +338,17 @@ def _positive_float(value: JsonValue, field_name: str) -> float:
     return result
 
 
-def _parse_endpoints(value: JsonValue, *, public_model: str) -> frozenset[ExternalRouteEndpoint]:
+def _parse_endpoints(value: JsonValue | list[str] | str, *, public_model: str) -> frozenset[ExternalRouteEndpoint]:
     endpoints = _string_list(value, field_name=f"external route '{public_model}'.endpoints")
     if not endpoints:
         raise ValueError(f"external route '{public_model}' must include at least one endpoint")
     invalid = [endpoint for endpoint in endpoints if endpoint not in EXTERNAL_PROVIDER_ENDPOINTS]
     if invalid:
         raise ValueError(f"external route '{public_model}' has unsupported endpoint(s): {', '.join(invalid)}")
-    return frozenset(endpoints)  # type: ignore[arg-type]
+    return frozenset(cast(tuple[ExternalRouteEndpoint, ...], tuple(endpoints)))
 
 
-def _string_list(value: JsonValue, *, field_name: str) -> list[str]:
+def _string_list(value: JsonValue | list[str] | str, *, field_name: str) -> list[str]:
     if isinstance(value, str):
         items = [part.strip() for part in value.split(",")]
     elif isinstance(value, list):
@@ -370,7 +378,7 @@ def _parse_pricing(value: JsonValue, *, public_model: str) -> ExternalProviderPr
     if mode not in {"none", "public_model", "provider_custom"}:
         raise ValueError(f"external route '{public_model}'.pricing.mode is invalid")
     return ExternalProviderPricing(
-        mode=mode,  # type: ignore[arg-type]
+        mode=cast(ExternalPricingMode, mode),
         input_per_1m=_optional_non_negative_float(data.get("input_per_1m"), "input_per_1m"),
         output_per_1m=_optional_non_negative_float(data.get("output_per_1m"), "output_per_1m"),
         cached_input_per_1m=_optional_non_negative_float(data.get("cached_input_per_1m"), "cached_input_per_1m"),
