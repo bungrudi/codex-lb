@@ -246,6 +246,96 @@ export const UpstreamProxyAdminSchema = z.object({
   bindings: z.array(AccountProxyBindingSchema),
 });
 
+export const ExternalRouteEndpointSchema = z.enum([
+  "chat.completions",
+  "responses",
+  "responses.stream",
+  "responses.collect",
+  "responses.compact",
+  "responses.websocket",
+  "backend.responses",
+  "audio.transcriptions",
+  "images.generations",
+  "images.edits",
+]);
+const ProviderIdSchema = z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/);
+const JsonObjectSchema = z.record(z.string(), z.unknown());
+
+export const ExternalProviderSchema = z.object({
+  id: z.string(),
+  kind: z.literal("openai_compatible"),
+  baseUrl: z.string(),
+  apiKeyConfigured: z.boolean(),
+  apiKeySource: z.enum(["dashboard", "env", "missing"]),
+  apiKeyEnv: z.string().nullable().optional(),
+  defaultHeaders: z.record(z.string(), z.string()).default({}),
+  timeoutSeconds: z.number().positive(),
+  streamIdleTimeoutSeconds: z.number().positive(),
+  isActive: z.boolean(),
+  allowInsecureBaseUrl: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const ExternalProviderCreateRequestSchema = z.object({
+  id: ProviderIdSchema,
+  kind: z.literal("openai_compatible").optional().default("openai_compatible"),
+  baseUrl: z.string().trim().min(1).max(2048),
+  apiKey: z.string().trim().max(8192).nullable().optional(),
+  apiKeyEnv: z.string().trim().max(128).nullable().optional(),
+  defaultHeaders: z.record(z.string(), z.string()).optional().default({}),
+  timeoutSeconds: z.number().positive().optional().default(600),
+  streamIdleTimeoutSeconds: z.number().positive().optional().default(600),
+  isActive: z.boolean().optional().default(true),
+  allowInsecureBaseUrl: z.boolean().optional().default(false),
+});
+
+export const ExternalProviderUpdateRequestSchema = ExternalProviderCreateRequestSchema.omit({ id: true })
+  .partial()
+  .extend({ clearApiKey: z.boolean().optional() });
+
+export const ExternalModelRouteSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  publicModel: z.string(),
+  providerId: z.string(),
+  targetModel: z.string(),
+  endpoints: z.array(ExternalRouteEndpointSchema),
+  preservePublicModel: z.boolean(),
+  fallbackToCodexPool: z.boolean(),
+  isActive: z.boolean(),
+  requestOverrides: JsonObjectSchema.default({}),
+  stripRequestFields: z.array(z.string()).default([]),
+  pricing: JsonObjectSchema.nullable().optional(),
+  status: z.enum(["active", "disabled", "provider_disabled", "missing_api_key", "conflict"]),
+  statusMessage: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const ExternalModelRouteCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  publicModel: z.string().trim().min(1).max(255),
+  providerId: ProviderIdSchema,
+  targetModel: z.string().trim().min(1).max(255),
+  endpoints: z.array(ExternalRouteEndpointSchema).min(1),
+  preservePublicModel: z.boolean().optional().default(true),
+  fallbackToCodexPool: z.boolean().optional().default(false),
+  isActive: z.boolean().optional().default(true),
+  requestOverrides: JsonObjectSchema.optional().default({}),
+  stripRequestFields: z.array(z.string()).optional().default([]),
+  pricing: JsonObjectSchema.nullable().optional(),
+  deactivateConflicts: z.boolean().optional().default(true),
+});
+
+export const ExternalModelRouteUpdateRequestSchema = ExternalModelRouteCreateRequestSchema.omit({ publicModel: true })
+  .partial();
+
+export const ExternalModelRoutingAdminSchema = z.object({
+  providers: z.array(ExternalProviderSchema),
+  routes: z.array(ExternalModelRouteSchema),
+});
+
 export type UpstreamProxyEndpoint = z.infer<typeof UpstreamProxyEndpointSchema>;
 export type UpstreamProxyEndpointCreateRequest = z.infer<typeof UpstreamProxyEndpointCreateRequestSchema>;
 export type UpstreamProxyPool = z.infer<typeof UpstreamProxyPoolSchema>;
@@ -254,3 +344,11 @@ export type UpstreamProxyPoolMemberRequest = z.infer<typeof UpstreamProxyPoolMem
 export type AccountProxyBinding = z.infer<typeof AccountProxyBindingSchema>;
 export type AccountProxyBindingRequest = z.infer<typeof AccountProxyBindingRequestSchema>;
 export type UpstreamProxyAdmin = z.infer<typeof UpstreamProxyAdminSchema>;
+export type ExternalRouteEndpoint = z.infer<typeof ExternalRouteEndpointSchema>;
+export type ExternalProvider = z.infer<typeof ExternalProviderSchema>;
+export type ExternalProviderCreateRequest = z.infer<typeof ExternalProviderCreateRequestSchema>;
+export type ExternalProviderUpdateRequest = z.infer<typeof ExternalProviderUpdateRequestSchema>;
+export type ExternalModelRoute = z.infer<typeof ExternalModelRouteSchema>;
+export type ExternalModelRouteCreateRequest = z.infer<typeof ExternalModelRouteCreateRequestSchema>;
+export type ExternalModelRouteUpdateRequest = z.infer<typeof ExternalModelRouteUpdateRequestSchema>;
+export type ExternalModelRoutingAdmin = z.infer<typeof ExternalModelRoutingAdminSchema>;

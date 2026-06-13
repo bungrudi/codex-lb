@@ -22,6 +22,7 @@ import {
   createDefaultAccounts,
   createDefaultApiKeys,
   createDefaultRequestLogs,
+  createExternalModelRoutingAdmin,
   createOauthCompleteResponse,
   createOauthStartResponse,
   createOauthStatusResponse,
@@ -34,6 +35,7 @@ import {
   createRequestLogsResponse,
   type DashboardAuthSession,
   type DashboardSettings,
+  type ExternalModelRoutingAdmin,
   type QuotaPlannerDecision,
   type QuotaPlannerForecast,
   type QuotaPlannerSettings,
@@ -94,6 +96,19 @@ const AccountAliasPayloadSchema = z.object({
 const AccountRoutingPolicyPayloadSchema = z.object({
   routingPolicy: z.enum(["normal", "burn_first", "preserve"]),
 });
+
+const ExternalRouteEndpointPayloadSchema = z.enum([
+  "chat.completions",
+  "responses",
+  "responses.stream",
+  "responses.collect",
+  "responses.compact",
+  "responses.websocket",
+  "backend.responses",
+  "audio.transcriptions",
+  "images.generations",
+  "images.edits",
+]);
 
 const SettingsPayloadSchema = z
   .object({
@@ -180,6 +195,7 @@ type MockState = {
   quotaPlannerSettings: QuotaPlannerSettings;
   quotaPlannerDecisions: QuotaPlannerDecision[];
   upstreamProxyAdmin: UpstreamProxyAdmin;
+  externalModelRoutingAdmin: ExternalModelRoutingAdmin;
   quotaPlannerForecast: QuotaPlannerForecast;
   apiKeys: ApiKey[];
   firewallEntries: Array<{ ipAddress: string; createdAt: string }>;
@@ -203,6 +219,7 @@ function createInitialState(): MockState {
     quotaPlannerSettings: createQuotaPlannerSettings(),
     quotaPlannerDecisions: [createQuotaPlannerDecision()],
     upstreamProxyAdmin: createUpstreamProxyAdmin(),
+    externalModelRoutingAdmin: createExternalModelRoutingAdmin(),
     quotaPlannerForecast: createQuotaPlannerForecast(),
     apiKeys: createDefaultApiKeys(),
     firewallEntries: [],
@@ -800,7 +817,146 @@ export const handlers = [
     return HttpResponse.json(state.settings);
   }),
 
+  http.get("/api/settings/external-model-routing", () => {
+    return HttpResponse.json(state.externalModelRoutingAdmin);
+  }),
 
+  http.post("/api/settings/external-model-routing/providers", async ({ request }) => {
+    const payload = await parseJsonBody(
+      request,
+      z.object({
+        id: z.string().min(1),
+        baseUrl: z.string().min(1),
+        apiKey: z.string().nullable().optional(),
+        apiKeyEnv: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
+      }).passthrough(),
+    );
+    if (!payload) {
+      return HttpResponse.json({ error: { code: "invalid_external_provider", message: "Invalid provider" } }, { status: 400 });
+    }
+    const provider = {
+      id: payload.id,
+      kind: "openai_compatible" as const,
+      baseUrl: payload.baseUrl,
+      apiKeyConfigured: Boolean(payload.apiKey || payload.apiKeyEnv),
+      apiKeySource: payload.apiKey ? "dashboard" as const : payload.apiKeyEnv ? "env" as const : "missing" as const,
+      apiKeyEnv: payload.apiKeyEnv ?? null,
+      defaultHeaders: {},
+      timeoutSeconds: 600,
+      streamIdleTimeoutSeconds: 600,
+      isActive: payload.isActive ?? true,
+      allowInsecureBaseUrl: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      providers: [...state.externalModelRoutingAdmin.providers, provider],
+    };
+    return HttpResponse.json(provider);
+  }),
+
+  http.put("/api/settings/external-model-routing/providers/:providerId", async ({ params, request }) => {
+    const providerId = String(params.providerId);
+    const payload = await parseJsonBody(request, z.object({ apiKey: z.string().optional(), clearApiKey: z.boolean().optional(), isActive: z.boolean().optional() }).passthrough());
+    const provider = state.externalModelRoutingAdmin.providers.find((item) => item.id === providerId);
+    if (!provider || !payload) {
+      return HttpResponse.json({ error: { code: "external_provider_not_found", message: "Provider not found" } }, { status: 404 });
+    }
+    const updated = {
+      ...provider,
+      isActive: payload.isActive ?? provider.isActive,
+      apiKeyConfigured: payload.clearApiKey ? false : payload.apiKey ? true : provider.apiKeyConfigured,
+      apiKeySource: payload.clearApiKey ? "missing" as const : payload.apiKey ? "dashboard" as const : provider.apiKeySource,
+      updatedAt: new Date().toISOString(),
+    };
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      providers: state.externalModelRoutingAdmin.providers.map((item) => item.id === providerId ? updated : item),
+    };
+    return HttpResponse.json(updated);
+  }),
+
+  http.delete("/api/settings/external-model-routing/providers/:providerId", ({ params }) => {
+    const providerId = String(params.providerId);
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      providers: state.externalModelRoutingAdmin.providers.filter((provider) => provider.id !== providerId),
+      routes: state.externalModelRoutingAdmin.routes.filter((route) => route.providerId !== providerId),
+    };
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post("/api/settings/external-model-routing/routes", async ({ request }) => {
+    const payload = await parseJsonBody(
+      request,
+      z.object({
+        name: z.string().min(1),
+        publicModel: z.string().min(1),
+        providerId: z.string().min(1),
+        targetModel: z.string().min(1),
+        endpoints: z.array(ExternalRouteEndpointPayloadSchema).min(1),
+        isActive: z.boolean().optional(),
+      }).passthrough(),
+    );
+    if (!payload) {
+      return HttpResponse.json({ error: { code: "invalid_external_model_route", message: "Invalid route" } }, { status: 400 });
+    }
+    const route = {
+      id: `route_${state.externalModelRoutingAdmin.routes.length + 1}`,
+      name: payload.name,
+      publicModel: payload.publicModel,
+      providerId: payload.providerId,
+      targetModel: payload.targetModel,
+      endpoints: payload.endpoints,
+      preservePublicModel: true,
+      fallbackToCodexPool: false,
+      isActive: payload.isActive ?? true,
+      requestOverrides: {},
+      stripRequestFields: [],
+      pricing: null,
+      status: "active" as const,
+      statusMessage: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      routes: [...state.externalModelRoutingAdmin.routes, route],
+    };
+    return HttpResponse.json(route);
+  }),
+
+  http.put("/api/settings/external-model-routing/routes/:routeId", async ({ params, request }) => {
+    const routeId = String(params.routeId);
+    const payload = await parseJsonBody(request, z.object({ targetModel: z.string().optional(), isActive: z.boolean().optional() }).passthrough());
+    const route = state.externalModelRoutingAdmin.routes.find((item) => item.id === routeId);
+    if (!route || !payload) {
+      return HttpResponse.json({ error: { code: "external_model_route_not_found", message: "Route not found" } }, { status: 404 });
+    }
+    const updated = {
+      ...route,
+      targetModel: payload.targetModel ?? route.targetModel,
+      isActive: payload.isActive ?? route.isActive,
+      status: payload.isActive === false ? "disabled" as const : "active" as const,
+      updatedAt: new Date().toISOString(),
+    };
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      routes: state.externalModelRoutingAdmin.routes.map((item) => item.id === routeId ? updated : item),
+    };
+    return HttpResponse.json(updated);
+  }),
+
+  http.delete("/api/settings/external-model-routing/routes/:routeId", ({ params }) => {
+    const routeId = String(params.routeId);
+    state.externalModelRoutingAdmin = {
+      ...state.externalModelRoutingAdmin,
+      routes: state.externalModelRoutingAdmin.routes.filter((route) => route.id !== routeId),
+    };
+    return new HttpResponse(null, { status: 204 });
+  }),
 
   http.get("/api/settings/upstream-proxy", () => {
     return HttpResponse.json(state.upstreamProxyAdmin);

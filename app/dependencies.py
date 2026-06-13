@@ -24,6 +24,8 @@ from app.modules.dashboard_auth.service import (
     DashboardAuthService,
     get_dashboard_session_store,
 )
+from app.modules.external_model_routing.repository import ExternalModelRoutingRepository
+from app.modules.external_model_routing.service import ExternalModelRoutingService
 from app.modules.firewall.repository import FirewallRepository
 from app.modules.firewall.service import FirewallRepositoryPort, FirewallService
 from app.modules.limit_warmup.repository import LimitWarmupRepository
@@ -107,6 +109,13 @@ class SettingsContext:
     session: AsyncSession
     repository: SettingsRepository
     service: SettingsService
+
+
+@dataclass(slots=True)
+class ExternalModelRoutingContext:
+    session: AsyncSession
+    repository: ExternalModelRoutingRepository
+    service: ExternalModelRoutingService
 
 
 @dataclass(slots=True)
@@ -271,6 +280,14 @@ def get_settings_context(
     repository = SettingsRepository(session)
     service = SettingsService(repository)
     return SettingsContext(session=session, repository=repository, service=service)
+
+
+def get_external_model_routing_context(
+    session: AsyncSession = Depends(get_session),
+) -> ExternalModelRoutingContext:
+    repository = ExternalModelRoutingRepository(session)
+    service = ExternalModelRoutingService(repository)
+    return ExternalModelRoutingContext(session=session, repository=repository, service=service)
 
 
 def get_dashboard_context(

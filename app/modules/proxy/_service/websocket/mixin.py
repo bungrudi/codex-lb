@@ -54,6 +54,7 @@ from app.core.errors import (
     response_failed_event,
 )
 from app.core.exceptions import AppError, ProxyAuthError
+from app.core.external_providers.resolver import ExternalRouteResolutionStatus, resolve_external_model_route_async
 from app.core.openai.exceptions import ClientPayloadError
 from app.core.openai.models import OpenAIEvent
 from app.core.openai.parsing import parse_sse_event
@@ -420,6 +421,7 @@ from app.modules.proxy.request_policy import (
     openai_client_payload_error,
     openai_invalid_payload_error,
     openai_validation_error,
+    resolve_model_alias,
     validate_model_access,
 )
 from app.modules.proxy.tool_call_dedupe import (
@@ -438,6 +440,23 @@ def _facade() -> Any:
 def _raise_proxy_budget_exhausted() -> NoReturn:
     _facade()._raise_proxy_budget_exhausted()
     raise AssertionError("proxy budget exhaustion helper returned")
+
+
+def _external_websocket_effective_model(payload: Mapping[str, JsonValue], api_key: ApiKeyData | None) -> str | None:
+    if api_key is not None and api_key.enforced_model:
+        return resolve_model_alias(api_key.enforced_model) or api_key.enforced_model
+    model = payload.get("model")
+    if isinstance(model, str) and model.strip():
+        stripped_model = model.strip()
+        return resolve_model_alias(stripped_model) or stripped_model
+    response = payload.get("response")
+    if isinstance(response, Mapping):
+        nested_mapping = cast(Mapping[str, JsonValue], response)
+        nested_model = nested_mapping.get("model")
+        if isinstance(nested_model, str) and nested_model.strip():
+            stripped_model = nested_model.strip()
+            return resolve_model_alias(stripped_model) or stripped_model
+    return None
 
 
 class _WebSocketMixin:
@@ -632,6 +651,34 @@ class _WebSocketMixin:
                     if text_data is not None:
                         payload = _parse_websocket_payload(text_data)
                         if payload is not None and _is_websocket_response_create(payload):
+                            effective_model = _external_websocket_effective_model(payload, api_key)
+                            try:
+                                validate_model_access(api_key, effective_model)
+                            except AppError as exc:
+                                async with client_send_lock:
+                                    await websocket.send_text(
+                                        _serialize_websocket_error_event(_app_error_to_websocket_event(exc))
+                                    )
+                                continue
+                            external_resolution = await resolve_external_model_route_async(
+                                effective_model,
+                                "responses.websocket",
+                            )
+                            if external_resolution.status != ExternalRouteResolutionStatus.NO_ROUTE:
+                                async with client_send_lock:
+                                    await websocket.send_text(
+                                        _serialize_websocket_error_event(
+                                            _wrapped_websocket_error_event(
+                                                400,
+                                                openai_error(
+                                                    "external_route_endpoint_unsupported",
+                                                    "External model routing for responses websocket is not implemented",
+                                                    error_type="invalid_request_error",
+                                                ),
+                                            )
+                                        )
+                                    )
+                                continue
                             try:
                                 prepared_request = await proxy._prepare_websocket_response_create_request(
                                     payload,

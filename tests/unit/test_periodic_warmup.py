@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from app.core.utils.time import utcnow
 from app.db.models import Account, AccountPeriodicWarmup, AccountStatus
 from app.modules.limit_warmup.service import LimitWarmupSendResult
+from app.modules.periodic_warmup.repository import PeriodicWarmupRepository
 from app.modules.periodic_warmup.service import PeriodicWarmupService
+from app.modules.request_logs.repository import RequestLogsRepository
 
 
 class FakeAttemptsRepo:
@@ -111,7 +114,11 @@ async def test_periodic_warmup_sends_due_account_without_previous_attempt() -> N
     attempts = FakeAttemptsRepo()
     request_logs = FakeRequestLogsRepo()
     sender = FakeSender()
-    service = PeriodicWarmupService(attempts, request_logs, sender=sender)
+    service = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, request_logs),
+        sender=sender,
+    )
 
     summary = await service.run_for_settings(accounts=[make_account("acc-1")], settings=make_settings())
 
@@ -127,8 +134,16 @@ async def test_periodic_warmup_duplicate_claim_submits_once() -> None:
     attempts = FakeAttemptsRepo()
     request_logs = FakeRequestLogsRepo()
     sender = FakeSender()
-    service_a = PeriodicWarmupService(attempts, request_logs, sender=sender)
-    service_b = PeriodicWarmupService(attempts, request_logs, sender=sender)
+    service_a = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, request_logs),
+        sender=sender,
+    )
+    service_b = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, request_logs),
+        sender=sender,
+    )
     account = make_account("acc-1")
     settings = make_settings()
 
@@ -155,7 +170,11 @@ async def test_periodic_warmup_skips_recent_attempt() -> None:
     )
     attempts = FakeAttemptsRepo({"acc-1": recent})
     sender = FakeSender()
-    service = PeriodicWarmupService(attempts, FakeRequestLogsRepo(), sender=sender)
+    service = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, FakeRequestLogsRepo()),
+        sender=sender,
+    )
 
     summary = await service.run_for_settings(accounts=[make_account("acc-1")], settings=make_settings())
 
@@ -168,7 +187,11 @@ async def test_periodic_warmup_skips_recent_attempt() -> None:
 async def test_periodic_warmup_account_opt_in_scope() -> None:
     attempts = FakeAttemptsRepo()
     sender = FakeSender()
-    service = PeriodicWarmupService(attempts, FakeRequestLogsRepo(), sender=sender)
+    service = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, FakeRequestLogsRepo()),
+        sender=sender,
+    )
 
     await service.run_for_settings(
         accounts=[make_account("acc-1", opt_in=True), make_account("acc-2", opt_in=False)],
@@ -182,7 +205,11 @@ async def test_periodic_warmup_account_opt_in_scope() -> None:
 async def test_periodic_warmup_skips_unsafe_states() -> None:
     attempts = FakeAttemptsRepo()
     sender = FakeSender()
-    service = PeriodicWarmupService(attempts, FakeRequestLogsRepo(), sender=sender)
+    service = PeriodicWarmupService(
+        cast(PeriodicWarmupRepository, attempts),
+        cast(RequestLogsRepository, FakeRequestLogsRepo()),
+        sender=sender,
+    )
 
     await service.run_for_settings(
         accounts=[

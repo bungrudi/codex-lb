@@ -66,6 +66,39 @@ async def test_add_log_persists_request_kind(db_setup) -> None:
 
 
 @pytest.mark.asyncio
+async def test_add_log_persists_external_provider_metadata(db_setup) -> None:
+    del db_setup
+    async with SessionLocal() as session:
+        repo = RequestLogsRepository(session)
+
+        saved = await repo.add_log(
+            account_id=None,
+            request_id="req_external",
+            model="gpt-5.3-codex",
+            input_tokens=10,
+            output_tokens=5,
+            latency_ms=1,
+            status="success",
+            error_code=None,
+            external_provider_id="openrouter",
+            external_provider_model="minimax/minimax-m3",
+            external_route_public_model="gpt-5.3-codex",
+            external_route_endpoint="chat.completions",
+            external_fallback_used=False,
+        )
+
+        persisted = await session.scalar(select(RequestLog).where(RequestLog.id == saved.id))
+        assert persisted is not None
+        assert persisted.account_id is None
+        assert persisted.model == "gpt-5.3-codex"
+        assert persisted.external_provider_id == "openrouter"
+        assert persisted.external_provider_model == "minimax/minimax-m3"
+        assert persisted.external_route_public_model == "gpt-5.3-codex"
+        assert persisted.external_route_endpoint == "chat.completions"
+        assert persisted.external_fallback_used is False
+
+
+@pytest.mark.asyncio
 async def test_find_latest_account_id_for_response_id_prefers_session_then_falls_back_to_api_key_scope() -> None:
     session = AsyncMock()
     repo = RequestLogsRepository(session)

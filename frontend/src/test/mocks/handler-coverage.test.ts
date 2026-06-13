@@ -62,6 +62,13 @@ const EXPECTED_ENDPOINTS = [
 	// settings
 	"GET /api/settings",
 	"PUT /api/settings",
+	"GET /api/settings/external-model-routing",
+	"POST /api/settings/external-model-routing/providers",
+	"PUT /api/settings/external-model-routing/providers/:providerId",
+	"DELETE /api/settings/external-model-routing/providers/:providerId",
+	"POST /api/settings/external-model-routing/routes",
+	"PUT /api/settings/external-model-routing/routes/:routeId",
+	"DELETE /api/settings/external-model-routing/routes/:routeId",
 	"GET /api/settings/upstream-proxy",
 	"POST /api/settings/upstream-proxy/endpoints",
 	"POST /api/settings/upstream-proxy/pools",

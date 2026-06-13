@@ -1,8 +1,15 @@
-import { get, post, put } from "@/lib/api-client";
+import { del, get, post, put } from "@/lib/api-client";
 import {
   AccountProxyBindingRequestSchema,
   AccountProxyBindingSchema,
   DashboardSettingsSchema,
+  ExternalModelRouteCreateRequestSchema,
+  ExternalModelRouteSchema,
+  ExternalModelRouteUpdateRequestSchema,
+  ExternalModelRoutingAdminSchema,
+  ExternalProviderCreateRequestSchema,
+  ExternalProviderSchema,
+  ExternalProviderUpdateRequestSchema,
   SettingsUpdateRequestSchema,
   UpstreamProxyAdminSchema,
   UpstreamProxyEndpointCreateRequestSchema,
@@ -14,6 +21,7 @@ import {
 
 const SETTINGS_PATH = "/api/settings";
 const UPSTREAM_PROXY_PATH = `${SETTINGS_PATH}/upstream-proxy`;
+const EXTERNAL_MODEL_ROUTING_PATH = `${SETTINGS_PATH}/external-model-routing`;
 
 export function getSettings() {
   return get(SETTINGS_PATH, DashboardSettingsSchema);
@@ -56,4 +64,40 @@ export function putAccountProxyBinding(accountId: string, payload: unknown) {
   return put(`${UPSTREAM_PROXY_PATH}/accounts/${encodeURIComponent(accountId)}/binding`, AccountProxyBindingSchema, {
     body: validated,
   });
+}
+
+export function getExternalModelRoutingAdmin() {
+  return get(EXTERNAL_MODEL_ROUTING_PATH, ExternalModelRoutingAdminSchema);
+}
+
+export function createExternalProvider(payload: unknown) {
+  const validated = ExternalProviderCreateRequestSchema.parse(payload);
+  return post(`${EXTERNAL_MODEL_ROUTING_PATH}/providers`, ExternalProviderSchema, { body: validated });
+}
+
+export function updateExternalProvider(providerId: string, payload: unknown) {
+  const validated = ExternalProviderUpdateRequestSchema.parse(payload);
+  return put(`${EXTERNAL_MODEL_ROUTING_PATH}/providers/${encodeURIComponent(providerId)}`, ExternalProviderSchema, {
+    body: validated,
+  });
+}
+
+export function deleteExternalProvider(providerId: string) {
+  return del(`${EXTERNAL_MODEL_ROUTING_PATH}/providers/${encodeURIComponent(providerId)}`);
+}
+
+export function createExternalModelRoute(payload: unknown) {
+  const validated = ExternalModelRouteCreateRequestSchema.parse(payload);
+  return post(`${EXTERNAL_MODEL_ROUTING_PATH}/routes`, ExternalModelRouteSchema, { body: validated });
+}
+
+export function updateExternalModelRoute(routeId: string, payload: unknown) {
+  const validated = ExternalModelRouteUpdateRequestSchema.parse(payload);
+  return put(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(routeId)}`, ExternalModelRouteSchema, {
+    body: validated,
+  });
+}
+
+export function deleteExternalModelRoute(routeId: string) {
+  return del(`${EXTERNAL_MODEL_ROUTING_PATH}/routes/${encodeURIComponent(routeId)}`);
 }

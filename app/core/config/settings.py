@@ -15,6 +15,13 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.auth.dashboard_mode import DashboardAuthMode, normalize_dashboard_auth_proxy_header
+from app.core.external_providers.config import (
+    ExternalModelRouteConfig,
+    ExternalProviderConfig,
+    parse_external_model_route_configs,
+    parse_external_provider_configs,
+    validate_external_routes_reference_providers,
+)
 from app.core.utils.proxy_env import outbound_proxy_env_configured
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -71,6 +78,8 @@ DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}"
 type StringListInput = str | list[str] | None
 type OptionalStringInput = str | None
 type ModelContextWindowOverridesInput = str | dict[str, int] | None
+type ExternalProvidersInput = str | dict[str, object] | None
+type ExternalModelRoutesInput = str | dict[str, object] | None
 
 
 def _validate_context_window_entries(data: Mapping[str, object]) -> dict[str, int]:
@@ -243,6 +252,8 @@ class Settings(BaseSettings):
     model_registry_refresh_interval_seconds: int = Field(default=300, gt=0)
     model_registry_client_version: str = "0.101.0"
     model_context_window_overrides: Annotated[dict[str, int], NoDecode] = Field(default_factory=dict)
+    external_providers_json: Annotated[dict[str, ExternalProviderConfig], NoDecode] = Field(default_factory=dict)
+    external_model_routes_json: Annotated[dict[str, ExternalModelRouteConfig], NoDecode] = Field(default_factory=dict)
     proxy_unauthenticated_client_cidrs: Annotated[list[str], NoDecode] = Field(default_factory=list)
     firewall_trust_proxy_headers: bool = False
     firewall_trusted_proxy_cidrs: Annotated[list[str], NoDecode] = Field(
@@ -447,6 +458,16 @@ class Settings(BaseSettings):
             return _validate_context_window_entries(value)
         raise TypeError("model_context_window_overrides must be a JSON object string or dict")
 
+    @field_validator("external_providers_json", mode="before")
+    @classmethod
+    def _parse_external_providers_json(cls, value: ExternalProvidersInput) -> dict[str, ExternalProviderConfig]:
+        return parse_external_provider_configs(value)
+
+    @field_validator("external_model_routes_json", mode="before")
+    @classmethod
+    def _parse_external_model_routes_json(cls, value: ExternalModelRoutesInput) -> dict[str, ExternalModelRouteConfig]:
+        return parse_external_model_route_configs(value)
+
     @field_validator("upstream_compact_timeout_seconds")
     @classmethod
     def _validate_upstream_compact_timeout_seconds(cls, value: float | None) -> float | None:
@@ -514,6 +535,14 @@ class Settings(BaseSettings):
         if self.bulkhead_proxy_compact_limit is None:
             http_limit = self.bulkhead_proxy_http_limit
             self.bulkhead_proxy_compact_limit = 0 if http_limit <= 0 else min(http_limit, 16)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_external_model_routes(self) -> "Settings":
+        validate_external_routes_reference_providers(
+            self.external_model_routes_json,
+            self.external_providers_json,
+        )
         return self
 
     @model_validator(mode="after")

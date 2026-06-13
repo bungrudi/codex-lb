@@ -213,6 +213,12 @@ class RequestLogsRepository:
         upstream_proxy_endpoint_id: str | None = None,
         upstream_proxy_fallback_used: bool | None = None,
         upstream_proxy_fail_closed_reason: str | None = None,
+        external_provider_id: str | None = None,
+        external_provider_model: str | None = None,
+        external_route_public_model: str | None = None,
+        external_route_endpoint: str | None = None,
+        external_fallback_used: bool | None = None,
+        external_fallback_reason: str | None = None,
     ) -> RequestLog:
         async with sqlite_writer_section():
             resolved_request_id = ensure_request_id(request_id)
@@ -259,6 +265,12 @@ class RequestLogsRepository:
                 upstream_proxy_endpoint_id=upstream_proxy_endpoint_id,
                 upstream_proxy_fallback_used=upstream_proxy_fallback_used,
                 upstream_proxy_fail_closed_reason=upstream_proxy_fail_closed_reason,
+                external_provider_id=external_provider_id,
+                external_provider_model=external_provider_model,
+                external_route_public_model=external_route_public_model,
+                external_route_endpoint=external_route_endpoint,
+                external_fallback_used=external_fallback_used,
+                external_fallback_reason=external_fallback_reason,
                 requested_at=requested_at or utcnow(),
             )
             log.cost_usd = calculated_cost_from_log(typing_cast(RequestLogLike, log))

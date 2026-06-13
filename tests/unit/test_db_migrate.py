@@ -126,8 +126,7 @@ def test_periodic_account_warmup_migration_schema_and_defaults(tmp_path: Path) -
                 row[0]
                 for row in connection.execute(
                     text(
-                        "SELECT name FROM sqlite_master "
-                        "WHERE type = 'index' AND tbl_name = 'account_periodic_warmups'"
+                        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'account_periodic_warmups'"
                     )
                 )
             }
@@ -442,6 +441,186 @@ def test_request_logs_response_lookup_migration_handles_preexisting_session_id_c
         index_names = {index["name"] for index in inspect(connection).get_indexes("request_logs")}
         assert "idx_logs_request_status_api_key_time" in index_names
         assert "idx_logs_request_status_api_key_session_time" in index_names
+
+
+def test_external_provider_request_log_fields_migration_adds_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-provider-request-log-fields.db"
+    url = _db_url(db_path)
+    pre_revision = "20260607_000000_merge_weekly_monthly_useragent_heads"
+    target_revision = "20260609_000000_add_external_provider_request_log_fields"
+    expected_columns = {
+        "external_provider_id",
+        "external_provider_model",
+        "external_route_public_model",
+        "external_route_endpoint",
+        "external_fallback_used",
+        "external_fallback_reason",
+    }
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("request_logs")}
+        assert expected_columns.isdisjoint(columns)
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("request_logs")}
+        assert expected_columns.issubset(columns)
+
+
+def test_external_model_route_admin_tables_migration_adds_tables(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-admin-tables.db"
+    url = _db_url(db_path)
+    pre_revision = "20260609_000000_add_external_provider_request_log_fields"
+    target_revision = "20260610_000000_add_external_model_route_admin_tables"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        assert not inspector.has_table("external_providers")
+        assert not inspector.has_table("external_model_routes")
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        assert inspector.has_table("external_providers")
+        assert inspector.has_table("external_model_routes")
+        provider_columns = {column["name"] for column in inspector.get_columns("external_providers")}
+        route_columns = {column["name"] for column in inspector.get_columns("external_model_routes")}
+        assert {
+            "id",
+            "base_url",
+            "api_key_encrypted",
+            "api_key_env",
+            "default_headers_json",
+            "allow_insecure_base_url",
+        }.issubset(provider_columns)
+        assert {
+            "public_model",
+            "provider_id",
+            "target_model",
+            "endpoints_json",
+            "request_overrides_json",
+            "strip_request_fields_json",
+        }.issubset(route_columns)
+
+
+def test_external_model_route_profiles_migration_preserves_existing_route(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-profiles.db"
+    url = _db_url(db_path)
+    pre_revision = "20260610_000000_add_external_model_route_admin_tables"
+    target_revision = "20260610_010000_add_external_model_route_profiles"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_providers (id, base_url, api_key_env)
+                VALUES ('openrouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'gpt-5.3-codex', 'openrouter', 'minimax/minimax-m3', '["chat.completions"]'
+                )
+                """
+            )
+        )
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).connect() as connection:
+        inspector = inspect(connection)
+        columns = {column["name"] for column in inspector.get_columns("external_model_routes")}
+        assert {"id", "name", "public_model"}.issubset(columns)
+        row = connection.execute(
+            text("SELECT name, public_model, provider_id, target_model FROM external_model_routes")
+        ).one()
+        assert row.public_model == "gpt-5.3-codex"
+        assert row.provider_id == "openrouter"
+        assert row.target_model == "minimax/minimax-m3"
+        assert row.name == "openrouter → minimax/minimax-m3"
+        index_names = {index["name"] for index in inspector.get_indexes("external_model_routes")}
+        assert "idx_external_model_routes_public_model" in index_names
+
+
+def test_external_model_route_profile_names_are_not_unique(tmp_path: Path) -> None:
+    db_path = tmp_path / "external-model-route-profile-names.db"
+    url = _db_url(db_path)
+    pre_revision = "20260610_010000_add_external_model_route_profiles"
+    target_revision = "20260610_020000_allow_duplicate_external_route_profile_names"
+
+    run_upgrade(url, pre_revision, bootstrap_legacy=False)
+
+    sync_url = to_sync_database_url(url)
+    with create_engine(sync_url, future=True).begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_providers (id, base_url, api_key_env)
+                VALUES ('openrouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    id, name, public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'route_1', 'Minimax Codex', 'gpt-5.3-codex', 'openrouter',
+                    'minimax/minimax-m3', '["chat.completions"]'
+                )
+                """
+            )
+        )
+
+    result = run_upgrade(url, target_revision, bootstrap_legacy=False)
+    assert result.current_revision == target_revision
+
+    with create_engine(sync_url, future=True).begin() as connection:
+        constraints = inspect(connection).get_unique_constraints("external_model_routes")
+        assert "uq_external_model_routes_public_model_name" not in {
+            constraint.get("name") for constraint in constraints
+        }
+        connection.execute(
+            text(
+                """
+                INSERT INTO external_model_routes (
+                    id, name, public_model, provider_id, target_model, endpoints_json
+                ) VALUES (
+                    'route_2', 'Minimax Codex', 'gpt-5.3-codex', 'openrouter',
+                    'deepseek/deepseek-v4-pro', '["responses"]'
+                )
+                """
+            )
+        )
+        route_count = connection.execute(
+            text(
+                """
+                SELECT COUNT(*) FROM external_model_routes
+                WHERE public_model = 'gpt-5.3-codex' AND name = 'Minimax Codex'
+                """
+            )
+        ).scalar_one()
+        assert route_count == 2
 
 
 def test_quota_planner_migration_repairs_preexisting_request_kind_column(tmp_path: Path) -> None:

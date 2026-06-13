@@ -43,8 +43,16 @@ import {
 	RequestLogSchema,
 	RequestLogsResponseSchema,
 } from "@/features/dashboard/schemas";
-import type { DashboardSettings, UpstreamProxyAdmin } from "@/features/settings/schemas";
-import { DashboardSettingsSchema, UpstreamProxyAdminSchema } from "@/features/settings/schemas";
+import type {
+	DashboardSettings,
+	ExternalModelRoutingAdmin,
+	UpstreamProxyAdmin,
+} from "@/features/settings/schemas";
+import {
+	DashboardSettingsSchema,
+	ExternalModelRoutingAdminSchema,
+	UpstreamProxyAdminSchema,
+} from "@/features/settings/schemas";
 import type {
 	QuotaPlannerDecision,
 	QuotaPlannerForecast,
@@ -72,6 +80,7 @@ export type {
 	RequestLogsResponse,
 	RequestLogFilterOptions,
 	DashboardSettings,
+	ExternalModelRoutingAdmin,
 	UpstreamProxyAdmin,
 	OauthStartResponse,
 	OauthStatusResponse,
@@ -560,6 +569,51 @@ export function createUpstreamProxyAdmin(
 			},
 		],
 		bindings: [],
+		...overrides,
+	});
+}
+
+export function createExternalModelRoutingAdmin(
+	overrides: Partial<ExternalModelRoutingAdmin> = {},
+): ExternalModelRoutingAdmin {
+	return ExternalModelRoutingAdminSchema.parse({
+		providers: [
+			{
+				id: "openrouter",
+				kind: "openai_compatible",
+				baseUrl: "https://openrouter.ai/api/v1",
+				apiKeyConfigured: true,
+				apiKeySource: "dashboard",
+				apiKeyEnv: null,
+				defaultHeaders: {},
+				timeoutSeconds: 600,
+				streamIdleTimeoutSeconds: 600,
+				isActive: true,
+				allowInsecureBaseUrl: false,
+				createdAt: offsetIso(0),
+				updatedAt: offsetIso(0),
+			},
+		],
+		routes: [
+			{
+				id: "route_minimax_codex",
+				name: "Minimax Codex",
+				publicModel: "gpt-5.3-codex",
+				providerId: "openrouter",
+				targetModel: "minimax/minimax-m3",
+				endpoints: ["chat.completions", "responses", "backend.responses"],
+				preservePublicModel: true,
+				fallbackToCodexPool: false,
+				isActive: true,
+				requestOverrides: {},
+				stripRequestFields: [],
+				pricing: null,
+				status: "active",
+				statusMessage: null,
+				createdAt: offsetIso(0),
+				updatedAt: offsetIso(0),
+			},
+		],
 		...overrides,
 	});
 }

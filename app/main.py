@@ -24,6 +24,7 @@ from app.core.bootstrap import ensure_auto_bootstrap_token, log_bootstrap_token
 from app.core.clients.http import close_http_client, init_http_client
 from app.core.config.settings import _bridge_advertise_hostname_is_replica_specific, get_settings
 from app.core.config.settings_cache import get_settings_cache
+from app.core.external_providers.runtime_config import get_external_routing_config_cache
 from app.core.handlers import add_exception_handlers
 from app.core.metrics.middleware import MetricsMiddleware
 from app.core.metrics.prometheus import MULTIPROCESS_MODE, PROMETHEUS_AVAILABLE, make_scrape_registry, mark_process_dead
@@ -49,6 +50,7 @@ from app.modules.audit import api as audit_api
 from app.modules.conversation_archive import api as conversation_archive_api
 from app.modules.dashboard import api as dashboard_api
 from app.modules.dashboard_auth import api as dashboard_auth_api
+from app.modules.external_model_routing import api as external_model_routing_api
 from app.modules.firewall import api as firewall_api
 from app.modules.health import api as health_api
 from app.modules.oauth import api as oauth_api
@@ -129,6 +131,7 @@ async def lifespan(app: FastAPI):
     startup_module.reset_bridge_registration()
     shutdown_state.reset()
     await get_settings_cache().invalidate()
+    await get_external_routing_config_cache().invalidate()
     await get_rate_limit_headers_cache().invalidate()
     reload_additional_quota_registry()
     settings = get_settings()
@@ -401,6 +404,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth_api.router)
     app.include_router(dashboard_auth_api.router)
     app.include_router(settings_api.router)
+    app.include_router(external_model_routing_api.router)
     app.include_router(firewall_api.router)
     app.include_router(sticky_sessions_api.router)
     app.include_router(api_keys_api.router)

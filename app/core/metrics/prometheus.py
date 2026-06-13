@@ -171,6 +171,36 @@ if PROMETHEUS_AVAILABLE:
         ["kind"],
         registry=REGISTRY,
     )
+    external_provider_requests_total = Counter(
+        "codex_lb_external_provider_requests_total",
+        "Total external provider requests",
+        ["provider_id", "endpoint", "status", "status_class"],
+        registry=REGISTRY,
+    )
+    external_provider_latency_seconds = Histogram(
+        "codex_lb_external_provider_latency_seconds",
+        "External provider request latency",
+        ["provider_id", "endpoint", "status"],
+        registry=REGISTRY,
+    )
+    external_provider_errors_total = Counter(
+        "codex_lb_external_provider_errors_total",
+        "Total external provider errors",
+        ["provider_id", "endpoint", "error_code"],
+        registry=REGISTRY,
+    )
+    external_provider_tokens_total = Counter(
+        "codex_lb_external_provider_tokens_total",
+        "External provider token totals",
+        ["provider_id", "endpoint", "token_type"],
+        registry=REGISTRY,
+    )
+    external_provider_fallback_total = Counter(
+        "codex_lb_external_provider_fallback_total",
+        "Total external provider fallbacks",
+        ["provider_id", "endpoint", "reason"],
+        registry=REGISTRY,
+    )
     continuity_owner_resolution_total = Counter(
         "codex_lb_continuity_owner_resolution_total",
         "Total continuity owner resolution outcomes by surface and source",
@@ -247,6 +277,11 @@ else:
     bridge_local_rebind_total: CounterLike | None = None
     bridge_forward_latency_seconds: HistogramLike | None = None
     bridge_public_contract_error_total: CounterLike | None = None
+    external_provider_requests_total: CounterLike | None = None
+    external_provider_latency_seconds: HistogramLike | None = None
+    external_provider_errors_total: CounterLike | None = None
+    external_provider_tokens_total: CounterLike | None = None
+    external_provider_fallback_total: CounterLike | None = None
     continuity_owner_resolution_total: CounterLike | None = None
     continuity_fail_closed_total: CounterLike | None = None
     account_lease_acquired_total: CounterLike | None = None
@@ -282,6 +317,11 @@ __all__ = [
     "bridge_public_contract_error_total",
     "bridge_prompt_cache_locality_miss_total",
     "bridge_reattach_total",
+    "external_provider_errors_total",
+    "external_provider_fallback_total",
+    "external_provider_latency_seconds",
+    "external_provider_requests_total",
+    "external_provider_tokens_total",
     "bridge_same_account_takeover_total",
     "bridge_soft_local_rebind_total",
     "circuit_breaker_state",

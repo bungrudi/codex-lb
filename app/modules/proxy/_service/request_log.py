@@ -78,7 +78,7 @@ class _RequestLogMixin:
         *,
         account_id: str | None,
         api_key: ApiKeyData | None,
-        request_id: str,
+        request_id: str | None,
         model: str | None,
         latency_ms: int,
         status: str,
@@ -107,9 +107,20 @@ class _RequestLogMixin:
         upstream_proxy_endpoint_id: str | None = None,
         upstream_proxy_fallback_used: bool | None = None,
         upstream_proxy_fail_closed_reason: str | None = None,
+        external_provider_id: str | None = None,
+        external_provider_model: str | None = None,
+        external_route_public_model: str | None = None,
+        external_route_endpoint: str | None = None,
+        external_fallback_used: bool | None = None,
+        external_fallback_reason: str | None = None,
         useragent: str | None = None,
         useragent_group: str | None = None,
     ) -> None:
+        if not request_id:
+            # request_id is the primary key for request_logs; without it the
+            # row cannot be persisted. Mirror rewrite_request_log_model's
+            # guard and drop the log rather than write a None key.
+            return
         task = asyncio.create_task(
             self._persist_request_log(
                 account_id=account_id,
@@ -143,6 +154,12 @@ class _RequestLogMixin:
                 upstream_proxy_endpoint_id=upstream_proxy_endpoint_id,
                 upstream_proxy_fallback_used=upstream_proxy_fallback_used,
                 upstream_proxy_fail_closed_reason=upstream_proxy_fail_closed_reason,
+                external_provider_id=external_provider_id,
+                external_provider_model=external_provider_model,
+                external_route_public_model=external_route_public_model,
+                external_route_endpoint=external_route_endpoint,
+                external_fallback_used=external_fallback_used,
+                external_fallback_reason=external_fallback_reason,
                 useragent=useragent,
                 useragent_group=useragent_group,
             ),
@@ -218,6 +235,12 @@ class _RequestLogMixin:
         upstream_proxy_endpoint_id: str | None = None,
         upstream_proxy_fallback_used: bool | None = None,
         upstream_proxy_fail_closed_reason: str | None = None,
+        external_provider_id: str | None = None,
+        external_provider_model: str | None = None,
+        external_route_public_model: str | None = None,
+        external_route_endpoint: str | None = None,
+        external_fallback_used: bool | None = None,
+        external_fallback_reason: str | None = None,
         useragent: str | None = None,
         useragent_group: str | None = None,
     ) -> None:
@@ -256,6 +279,12 @@ class _RequestLogMixin:
                     upstream_proxy_endpoint_id=upstream_proxy_endpoint_id,
                     upstream_proxy_fallback_used=upstream_proxy_fallback_used,
                     upstream_proxy_fail_closed_reason=upstream_proxy_fail_closed_reason,
+                    external_provider_id=external_provider_id,
+                    external_provider_model=external_provider_model,
+                    external_route_public_model=external_route_public_model,
+                    external_route_endpoint=external_route_endpoint,
+                    external_fallback_used=external_fallback_used,
+                    external_fallback_reason=external_fallback_reason,
                     useragent=useragent,
                     useragent_group=useragent_group,
                 )
