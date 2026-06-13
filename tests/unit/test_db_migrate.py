@@ -126,8 +126,7 @@ def test_periodic_account_warmup_migration_schema_and_defaults(tmp_path: Path) -
                 row[0]
                 for row in connection.execute(
                     text(
-                        "SELECT name FROM sqlite_master "
-                        "WHERE type = 'index' AND tbl_name = 'account_periodic_warmups'"
+                        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'account_periodic_warmups'"
                     )
                 )
             }

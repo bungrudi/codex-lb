@@ -53,11 +53,7 @@ def test_bridge_provider_request_adds_tools_and_rewrites_prior_namespace_calls()
     bridged = bridge_computer_use_mcp_provider_request(_computer_use_payload())
 
     tools = cast(list[JsonValue], bridged["tools"])
-    tool_names = {
-        cast(Mapping[str, JsonValue], tool).get("name")
-        for tool in tools
-        if isinstance(tool, Mapping)
-    }
+    tool_names = {cast(Mapping[str, JsonValue], tool).get("name") for tool in tools if isinstance(tool, Mapping)}
     assert "existing" in tool_names
     assert "mcp__computer_use__list_apps" in tool_names
     assert "mcp__computer_use__get_app_state" in tool_names
@@ -125,7 +121,7 @@ def test_rewrite_response_payload_maps_bad_resource_listing_attempt_to_list_apps
 
 def test_rewrite_response_sse_converts_synthetic_tool_call_to_codex_namespace() -> None:
     event = (
-        'event: response.output_item.done\n'
+        "event: response.output_item.done\n"
         'data: {"type":"response.output_item.done","item":{"type":"function_call",'
         '"name":"mcp__computer_use__type_text","call_id":"call_4",'
         '"arguments":"{\\"app\\":\\"Dia\\",\\"text\\":\\"hi\\"}"}}\n\n'

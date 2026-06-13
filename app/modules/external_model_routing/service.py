@@ -226,9 +226,7 @@ class ExternalModelRoutingService:
             else _parse_string_list(row.strip_request_fields_json)
         )
         next_pricing = (
-            payload.pricing
-            if "pricing" in payload.model_fields_set
-            else _parse_optional_json_object(row.pricing_json)
+            payload.pricing if "pricing" in payload.model_fields_set else _parse_optional_json_object(row.pricing_json)
         )
         route_config = self._validate_route_payload(
             public_model=row.public_model,

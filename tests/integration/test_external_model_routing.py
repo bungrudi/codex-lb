@@ -372,13 +372,13 @@ async def test_backend_codex_responses_computer_use_context_bridges_mcp_tools(as
             del inbound_headers, max_event_bytes, session
             calls.append({"endpoint_path": endpoint_path, "payload": dict(payload)})
             yield (
-                'event: response.output_item.done\n'
+                "event: response.output_item.done\n"
                 'data: {"type":"response.output_item.done","output_index":0,'
                 '"item":{"type":"function_call","name":"mcp__computer_use__get_app_state",'
                 '"call_id":"call_cua_1","arguments":"{\\"app\\":\\"Dia\\"}"}}\n\n'
             )
             yield (
-                'event: response.completed\n'
+                "event: response.completed\n"
                 'data: {"type":"response.completed","response":{"id":"resp_cua","object":"response",'
                 '"status":"completed","model":"minimax/minimax-m3","output":[],'
                 '"usage":{"input_tokens":5,"output_tokens":1}}}\n\n'
@@ -439,9 +439,7 @@ async def test_backend_codex_responses_computer_use_context_bridges_mcp_tools(as
 
 
 @pytest.mark.asyncio
-async def test_backend_codex_responses_computer_use_rewrites_resource_listing_attempt(
-    async_client, monkeypatch
-):
+async def test_backend_codex_responses_computer_use_rewrites_resource_listing_attempt(async_client, monkeypatch):
     _configure_external_route(monkeypatch, endpoints=["backend.responses"])
 
     class FakeProviderClient:
@@ -459,13 +457,13 @@ async def test_backend_codex_responses_computer_use_rewrites_resource_listing_at
         ):
             del endpoint_path, payload, inbound_headers, max_event_bytes, session
             yield (
-                'event: response.output_item.done\n'
+                "event: response.output_item.done\n"
                 'data: {"type":"response.output_item.done","output_index":0,'
                 '"item":{"type":"function_call","name":"list_mcp_resources",'
                 '"call_id":"call_cua_2","arguments":"{\\"server\\":\\"computer-use\\"}"}}\n\n'
             )
             yield (
-                'event: response.completed\n'
+                "event: response.completed\n"
                 'data: {"type":"response.completed","response":{"id":"resp_cua","object":"response",'
                 '"status":"completed","model":"minimax/minimax-m3","output":[]}}\n\n'
             )

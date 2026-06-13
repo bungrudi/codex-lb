@@ -142,9 +142,7 @@ _COMPUTER_USE_TOOL_DEFINITIONS: tuple[dict[str, JsonValue], ...] = (
     },
     {
         "name": "press_key",
-        "description": (
-            "Press a key or key-combination on the keyboard. Examples: a, Return, Tab, super+c, Up, KP_0."
-        ),
+        "description": ("Press a key or key-combination on the keyboard. Examples: a, Return, Tab, super+c, Up, KP_0."),
         "parameters": {
             "type": "object",
             "properties": {
@@ -169,9 +167,7 @@ _COMPUTER_USE_TOOL_DEFINITIONS: tuple[dict[str, JsonValue], ...] = (
         },
     },
 )
-_COMPUTER_USE_TOOL_NAMES = frozenset(
-    cast(str, definition["name"]) for definition in _COMPUTER_USE_TOOL_DEFINITIONS
-)
+_COMPUTER_USE_TOOL_NAMES = frozenset(cast(str, definition["name"]) for definition in _COMPUTER_USE_TOOL_DEFINITIONS)
 
 _COMPUTER_USE_PROVIDER_INSTRUCTIONS_START = "<codex-lb-external-provider-computer-use-compat>"
 _COMPUTER_USE_PROVIDER_INSTRUCTIONS_END = "</codex-lb-external-provider-computer-use-compat>"
@@ -277,11 +273,7 @@ def _payload_contains_computer_use_marker(value: JsonValue) -> bool:
 
 def _provider_tools_with_computer_use(value: JsonValue) -> list[JsonValue]:
     tools = list(value) if is_json_list(value) else []
-    existing_names = {
-        tool.get("name")
-        for tool in tools
-        if is_json_mapping(tool) and isinstance(tool.get("name"), str)
-    }
+    existing_names = {tool.get("name") for tool in tools if is_json_mapping(tool) and isinstance(tool.get("name"), str)}
     for definition in _COMPUTER_USE_TOOL_DEFINITIONS:
         tool_name = cast(str, definition["name"])
         provider_name = _provider_tool_name(tool_name)

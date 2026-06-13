@@ -35,9 +35,7 @@ class ExternalModelRoutingRepository:
         await self._session.commit()
 
     async def list_routes(self) -> Sequence[ExternalModelRoute]:
-        result = await self._session.execute(
-            select(ExternalModelRoute).order_by(ExternalModelRoute.public_model.asc())
-        )
+        result = await self._session.execute(select(ExternalModelRoute).order_by(ExternalModelRoute.public_model.asc()))
         return result.scalars().all()
 
     async def get_route(self, public_model: str) -> ExternalModelRoute | None:
